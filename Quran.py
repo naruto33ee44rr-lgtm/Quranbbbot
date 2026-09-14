@@ -2,12 +2,14 @@
 import asyncio
 import json
 import logging
+import os
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 import aiohttp
+from aiohttp import web
 from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -25,6 +27,22 @@ from aiogram.types import (
     Message,
     TelegramObject,
 )
+
+# ============================================================================
+# دالة سيرفر الويب الوهمي ربط البورت (Render Web Service)
+# ============================================================================
+
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+async def start_dummy_server():
+    app = web.Application()
+    app.router.add_get('/', handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
 
 # ============================================================================
 # الإعدادات العامة والأرقام المعرفية للإيموجيات المخصصة
@@ -884,7 +902,6 @@ async def on_back_to_home(callback: CallbackQuery, state: FSMContext):
 async def on_open_quran_section(callback: CallbackQuery):
     await callback.answer()
     try:
-        # تم تعديل النص ليصبح المطلوبة وإضافة الإيموجي المحدد
         await callback.message.edit_text(
             QURAN_HEADER_TEXT,
             reply_markup=build_surah_list_menu(0),
@@ -899,7 +916,6 @@ async def on_surah_page_change(callback: CallbackQuery):
     page = int(callback.data.split(":")[1])
     await callback.answer()
     try:
-        # تم تطبيق النص المحدث هنا أيضاً
         await callback.message.edit_text(
             QURAN_HEADER_TEXT,
             reply_markup=build_surah_list_menu(page),
@@ -1015,7 +1031,6 @@ async def on_range_requested(callback: CallbackQuery, state: FSMContext):
     await state.update_data(surah_key=surah_key)
     await state.set_state(QuranStates.waiting_for_range)
 
-    # وضع خط تحت الرقم 20 وتحت ( النطاق المطلوب )
     prompt_text = (
         f"<b>أختر</b> عدد من الصفحات من ( <b>{surah['start_page']}</b> - <b>{surah['end_page']}</b> ) {EMOJI_RANGE_TITLE}\n\n"
         f"{EMOJI_ALERT} <b>تنبيه</b> الحد المسموح <b><u>20</u></b> صفحة وأقل.\n"
@@ -1229,6 +1244,7 @@ async def on_sec_user_details(callback: CallbackQuery):
 
 
 async def main():
+    await start_dummy_server()  # تم تفعيل خادم البورت الوهمي لـ Render
     global http_session
     bot = Bot(
         token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML)
