@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: Quranbbbot
+    env: docker
+    plan: free
+
