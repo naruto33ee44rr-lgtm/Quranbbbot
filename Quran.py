@@ -59,9 +59,10 @@ OWNER_ID = 1317171223
 INVISIBLE_SPACE = "\u200b"
 
 # معرفات الإيموجيات المخصصة (Custom Emoji IDs)
-ID_WELCOME_EMOJI = "5355194215129169036"  # إيموجي أهلاً
+ID_WELCOME_EMOJI = "5355194215129169036"  # إيموجي أهلاً / أختيار السورة والنمط
 ID_BOT_OWNER_EMOJI = "6158862632926319619"  # إيموجي Bot Owner
 ID_DEV_USERNAME_EMOJI = "6269163801178804220"  # إيموجي اليوزر
+ID_RECITER_EMOJI = "6071346841704733378"  # إيموجي القارئ
 ID_NAV_NEXT = "5291842193382730408"  # التالي
 ID_NAV_PREV = "5291993277447301940"  # السابق
 ID_MODE_BTN = "5355082606109013423"  # إيموجي أزرار الاختيار
@@ -83,6 +84,7 @@ ID_SECURITY_PANEL = "6269316311172518259"
 EMOJI_WELCOME = f'<tg-emoji emoji-id="{ID_WELCOME_EMOJI}">👋</tg-emoji>'
 EMOJI_BOT_OWNER = f'<tg-emoji emoji-id="{ID_BOT_OWNER_EMOJI}">👑</tg-emoji>'
 EMOJI_DEV_USERNAME = f'<tg-emoji emoji-id="{ID_DEV_USERNAME_EMOJI}">👤</tg-emoji>'
+EMOJI_RECITER_HTML = f'<tg-emoji emoji-id="{ID_RECITER_EMOJI}">🎙</tg-emoji>'
 EMOJI_WAITING_HTML = f'<tg-emoji emoji-id="{ID_WAITING}">⏳</tg-emoji>'
 EMOJI_FUTURE_SECTION = f'<tg-emoji emoji-id="{ID_FUTURE_SECTION}">📌</tg-emoji>'
 
@@ -90,7 +92,7 @@ EMOJI_MAIN_SECTION = f'<tg-emoji emoji-id="{ID_MAIN_SECTION}">📖</tg-emoji>'
 EMOJI_SUGGESTIONS_ICON = f'<tg-emoji emoji-id="{ID_SUGGESTIONS_ICON}">💡</tg-emoji>'
 EMOJI_SURAH_CHOSEN = f'<tg-emoji emoji-id="{ID_SURAH_CHOSEN}">✨</tg-emoji>'
 
-EMOJI_SELECT_MODE = f'<tg-emoji emoji-id="6269163801178804220">⚙️</tg-emoji>'
+EMOJI_SELECT_MODE = f'<tg-emoji emoji-id="{ID_WELCOME_EMOJI}">⚙️</tg-emoji>'
 
 EMOJI_GRID_TITLE = f'<tg-emoji emoji-id="{ID_GRID_TITLE}">📄</tg-emoji>'
 EMOJI_RANGE_TITLE = f'<tg-emoji emoji-id="{ID_RANGE_TITLE}">📚</tg-emoji>'
@@ -423,7 +425,7 @@ async def fetch_pages_as_media_group(
     semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
 
     async def process(page: int) -> Optional[tuple[int, InputMediaPhoto]]:
-        caption_text = f"صفحة {page} {EMOJI_CAPTION_HTML}"
+        caption_text = f"<b>صفحة {page}</b> {EMOJI_CAPTION_HTML}"
         if page in PAGE_CACHE:
             return page, InputMediaPhoto(
                 media=PAGE_CACHE[page],
@@ -566,7 +568,7 @@ async def deliver_audio_result(
         audio_file = BufferedInputFile(
             combined_audio, filename=f"{surah['name']}_{title_suffix}.mp3"
         )
-        caption_text = f"القارئ : <b>{RECITER_NAME}</b> <tg-emoji emoji-id=\"6269163801178804220\">🎙</tg-emoji>"
+        caption_text = f"القارئ : <b>{RECITER_NAME}</b> {EMOJI_RECITER_HTML}"
 
         await answer_target.answer_audio(
             audio=audio_file, caption=caption_text, parse_mode=ParseMode.HTML
@@ -982,10 +984,10 @@ async def on_single_page_selected(callback: CallbackQuery):
     surah = SURAHS_DICT.get(surah_key)
 
     audio_task = asyncio.create_task(build_pages_audio([page]))
-    caption_text = f"صفحة {page} {EMOJI_CAPTION_HTML}"
+    caption_text = f"<b>صفحة {page}</b> {EMOJI_CAPTION_HTML}"
 
     img_waiting_msg = await callback.message.answer(
-        f"<b>جارِ تحميل</b> صورة الصفحة {EMOJI_WAITING_HTML}",
+        f"<b>جارِ</b> تحميل <b>صورة الصفحة</b> {EMOJI_WAITING_HTML}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -1012,7 +1014,7 @@ async def on_single_page_selected(callback: CallbackQuery):
         pass
 
     audio_waiting_msg = await callback.message.answer(
-        f"<b>جارِ تجهيز</b> المقطع الصوتي بصوت <b>{RECITER_NAME}</b> {EMOJI_WAITING_HTML}",
+        f"<b>جارِ</b> تجهيز <b>المقطع الصوتي</b> {EMOJI_WAITING_HTML}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -1081,7 +1083,7 @@ async def handle_page_range(message: Message, state: FSMContext):
     audio_task = asyncio.create_task(build_pages_audio(pages))
 
     img_waiting_msg = await message.answer(
-        f"<b>جارِ تحميل</b> صور الصفحات {EMOJI_WAITING_HTML}",
+        f"<b>جارِ</b> تحميل <b>صور الصفحات</b> {EMOJI_WAITING_HTML}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -1106,7 +1108,7 @@ async def handle_page_range(message: Message, state: FSMContext):
         pass
 
     audio_waiting_msg = await message.answer(
-        f"<b>جارِ تجهيز</b> المقطع الصوتي للنطاق بصوت <b>{RECITER_NAME}</b> {EMOJI_WAITING_HTML}",
+        f"<b>جارِ</b> تجهيز <b>المقطع الصوتي</b> {EMOJI_WAITING_HTML}",
         parse_mode=ParseMode.HTML,
     )
 
