@@ -48,7 +48,7 @@ async def start_dummy_server():
 # الإعدادات العامة والأرقام المعرفية للإيموجيات المخصصة
 # ============================================================================
 
-BOT_TOKEN = "8778483918:AAGB06M4joS3vv5XLwG_J2WkkLnaXIpwkWw"
+BOT_TOKEN = "8985243390:AAFwMzMbfit3_0OKb77KvGPOj5ZSBQmzRpU"
 
 DEVELOPER_USERNAME = "mh5_c"
 
