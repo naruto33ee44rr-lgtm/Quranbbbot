@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import re
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional
@@ -79,7 +78,6 @@ ID_GRID_TITLE = "6070970164482939513"
 ID_RANGE_TITLE = "6071000899268910391"
 ID_ALERT = "6269316311172518259"
 ID_SECURITY_PANEL = "6269316311172518259"
-ID_RECITER_ICON = "6269163801178804220"
 
 # صيغ HTML الجاهزة للعرض
 EMOJI_WELCOME = f'<tg-emoji emoji-id="{ID_WELCOME_EMOJI}">👋</tg-emoji>'
@@ -99,23 +97,10 @@ EMOJI_RANGE_TITLE = f'<tg-emoji emoji-id="{ID_RANGE_TITLE}">📚</tg-emoji>'
 EMOJI_ALERT = f'<tg-emoji emoji-id="{ID_ALERT}">⚠️</tg-emoji>'
 EMOJI_CAPTION_HTML = f'<tg-emoji emoji-id="{ID_PAGE_CAPTION}">📖</tg-emoji>'
 EMOJI_SECURITY_PANEL = f'<tg-emoji emoji-id="{ID_SECURITY_PANEL}">🛡️</tg-emoji>'
-EMOJI_RECITER_ICON = f'<tg-emoji emoji-id="{ID_RECITER_ICON}">🎙</tg-emoji>'
 
-# ============================================================================
-# القرّاء المتاحون (Reciters) - جميعها من everyayah.com بأعلى جودة متوفرة
-# ============================================================================
-
-RECITERS: dict[str, dict] = {
-    "dossary": {"name": "ياسر الدوسري", "folder": "Yasser_Ad-Dussary_128kbps", "bitrate": "128k"},
-    "alafasy": {"name": "مشاري العفاسي", "folder": "Alafasy_128kbps", "bitrate": "128k"},
-    "abdulbasit": {"name": "عبد الباسط عبد الصمد", "folder": "Abdul_Basit_Murattal_192kbps", "bitrate": "192k"},
-    "sudais": {"name": "عبد الرحمن السديس", "folder": "Abdurrahmaan_As-Sudais_192kbps", "bitrate": "192k"},
-    "minshawy": {"name": "محمد صديق المنشاوي", "folder": "Minshawy_Murattal_128kbps", "bitrate": "128k"},
-}
-DEFAULT_RECITER_KEY = "dossary"
-
-# القارئ الافتراضي للبوت (يُستخدم كنص افتراضي فقط، الاختيار الفعلي عبر RECITERS)
-RECITER_NAME = RECITERS[DEFAULT_RECITER_KEY]["name"]
+# القارئ الافتراضي للبوت
+RECITER_NAME = "د. ياسر الدوسري"
+RECITER_AUDIO_URL = "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps"
 
 # نص الترويسة لقسم القرآن الكريم
 QURAN_HEADER_TEXT = f'أختر <b>سورة</b> {EMOJI_SELECT_MODE}'
@@ -184,21 +169,12 @@ def page_image_disk_path(page: int) -> Path:
     return PAGE_IMAGES_DIR / f"{page}.jpg"
 
 
-def audio_disk_path(reciter_key: str, surah_num: int, ayah_num: int) -> Path:
-    # لاحقة "_trimmed" تفصل الكاش الجديد (بعد تشذيب السكوت) عن أي كاش قديم
-    # كان مخزّناً بالنسخة الخام قبل هذا التعديل، لتفادي تقديم صوت فيه توقف.
-    reciter_dir = AUDIO_FILES_DIR / f"{reciter_key}_trimmed"
-    reciter_dir.mkdir(parents=True, exist_ok=True)
-    return reciter_dir / f"{surah_num:03d}{ayah_num:03d}.mp3"
-
-
-def reciter_audio_base_url(reciter_key: str) -> str:
-    folder = RECITERS.get(reciter_key, RECITERS[DEFAULT_RECITER_KEY])["folder"]
-    return f"https://everyayah.com/data/{folder}"
+def audio_disk_path(surah_num: int, ayah_num: int) -> Path:
+    return AUDIO_FILES_DIR / f"{surah_num:03d}{ayah_num:03d}.mp3"
 
 
 PAGE_CACHE: dict[int, str] = _load_page_file_id_cache()
-AUDIO_CACHE: dict[tuple[str, int, int], bytes] = {}
+AUDIO_CACHE: dict[tuple[int, int], bytes] = {}
 MAX_CACHE_ITEMS = 1000
 
 # ============================================================================
@@ -211,23 +187,9 @@ MAX_MESSAGES_PER_USER_PER_DAY = 50
 BOT_USERS: dict[int, dict] = {}
 DAILY_ACTIVITY: dict[str, dict[int, list[dict]]] = {}
 
-# اختيار القارئ لكل مستخدم (بالذاكرة)
-USER_RECITER: dict[int, str] = {}
-
 
 def is_owner(user_id: Optional[int]) -> bool:
     return bool(OWNER_ID) and user_id == OWNER_ID
-
-
-def get_user_reciter_key(user_id: Optional[int]) -> str:
-    if user_id is None:
-        return DEFAULT_RECITER_KEY
-    return USER_RECITER.get(user_id, DEFAULT_RECITER_KEY)
-
-
-def get_user_reciter_name(user_id: Optional[int]) -> str:
-    key = get_user_reciter_key(user_id)
-    return RECITERS[key]["name"]
 
 
 def format_user_display_name(record: dict) -> str:
@@ -517,131 +479,7 @@ async def get_page_ayahs(page: int) -> list[tuple[int, int]]:
     return result
 
 
-async def trim_silence_ffmpeg(audio_bytes: bytes, bitrate: str = "128k") -> bytes:
-    """
-    يشذّب أي سكوت زائد من بداية ونهاية مقطع الآية قبل دمجه مع بقية الآيات.
-
-    السبب: ملفات everyayah.com لبعض القرّاء (كل من عدا الدوسري هنا) فيها
-    سكوت/صمت مُسجَّل فعلياً داخل ملف كل آية (بداية أو نهاية المقطع)،
-    فحين تُدمج الآيات ببعضها بـ "-c copy" (بدون إعادة ترميز) يبقى هذا
-    السكوت كما هو فيظهر كـ"توقف/تقطع" بين كل آية والتي تليها. حلّها هو
-    قص هذا السكوت الفعلي من كل مقطع قبل الدمج، وليس مشكلة في طريقة الدمج
-    نفسها.
-    """
-    try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            in_path = tmp_path / "in.mp3"
-            out_path = tmp_path / "out.mp3"
-            in_path.write_bytes(audio_bytes)
-
-            # يقصّ من البداية ثم (بعكس الاتجاه) من النهاية أي سكوت أعمق من
-            # -45dB يدوم أكثر من 0.15 ثانية، بدون المساس بالصوت المسموع.
-            silence_filter = (
-                "silenceremove=start_periods=1:start_silence=0.15:"
-                "start_threshold=-45dB:detection=peak,areverse,"
-                "silenceremove=start_periods=1:start_silence=0.15:"
-                "start_threshold=-45dB:detection=peak,areverse"
-            )
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-loglevel", "error",
-                "-i", str(in_path),
-                "-af", silence_filter,
-                "-c:a", "libmp3lame",
-                "-b:a", bitrate,
-                str(out_path),
-            ]
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await proc.communicate()
-            if proc.returncode == 0 and out_path.exists():
-                return out_path.read_bytes()
-            logger.warning(
-                "فشل تشذيب السكوت من مقطع آية (code=%s): %s",
-                proc.returncode,
-                stderr.decode(errors="ignore")[:300],
-            )
-    except FileNotFoundError:
-        logger.error("ffmpeg غير مثبت، تعذر تشذيب السكوت.")
-    except Exception:
-        logger.exception("خطأ غير متوقع أثناء تشذيب السكوت من مقطع آية")
-
-    return audio_bytes
-
-
-async def concat_audio_chunks_ffmpeg(chunks: list[bytes]) -> Optional[bytes]:
-    """
-    يدمج عدة ملفات MP3 مستقلة في ملف واحد صالح باستخدام ffmpeg (concat demuxer).
-
-    السبب: الدمج الساذج بلصق البايتات (b"".join) ينتج ملف MP3 يحتوي على عدة
-    رؤوس Xing/ID3 متتالية. أغلب المشغلات (وتطبيق تيليجرام تحديداً) تقرأ رأس
-    Xing الخاص بأول مقطع فقط لتحديد مدة/طول الملف، فتتوقف عن التشغيل عند
-    نهاية المقطع الأول فقط (وهذا سبب مشكلة "يرسل فقط أول آية" في الفاتحة
-    وأي صفحة/نطاق يحتوي أكثر من آية). إعادة التجميع عبر ffmpeg تنتج ملفاً
-    بترويسة واحدة صحيحة فيُشغَّل كاملاً.
-    """
-    if not chunks:
-        return None
-    if len(chunks) == 1:
-        return chunks[0]
-
-    try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            list_file = tmp_path / "list.txt"
-            list_lines = []
-            for idx, chunk in enumerate(chunks):
-                part_path = tmp_path / f"part_{idx:05d}.mp3"
-                part_path.write_bytes(chunk)
-                list_lines.append(f"file '{part_path.as_posix()}'")
-            list_file.write_text("\n".join(list_lines), encoding="utf-8")
-
-            output_path = tmp_path / "output.mp3"
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-loglevel", "error",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(list_file),
-                "-c", "copy",
-                str(output_path),
-            ]
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await proc.communicate()
-
-            if proc.returncode == 0 and output_path.exists():
-                return output_path.read_bytes()
-
-            logger.error(
-                "فشل دمج المقاطع الصوتية عبر ffmpeg (code=%s): %s",
-                proc.returncode,
-                stderr.decode(errors="ignore")[:500],
-            )
-    except FileNotFoundError:
-        logger.error(
-            "ffmpeg غير مثبت على السيرفر، سيتم اللجوء لدمج بايتات مباشر "
-            "(قد لا يعمل التشغيل الكامل في تيليجرام)."
-        )
-    except Exception:
-        logger.exception("خطأ غير متوقع أثناء دمج المقاطع الصوتية")
-
-    # حل احتياطي إن تعذر استخدام ffmpeg لأي سبب
-    return b"".join(chunks)
-
-
-async def build_pages_audio(
-    pages: list[int], reciter_key: str = DEFAULT_RECITER_KEY
-) -> Optional[bytes]:
+async def build_pages_audio(pages: list[int]) -> Optional[bytes]:
     pages_ayahs = await asyncio.gather(*(get_page_ayahs(p) for p in pages))
     all_ayahs = []
     for page_ayahs in pages_ayahs:
@@ -658,15 +496,13 @@ async def build_pages_audio(
         return None
 
     semaphore = asyncio.Semaphore(AUDIO_DOWNLOAD_CONCURRENCY)
-    base_url = reciter_audio_base_url(reciter_key)
-    bitrate = RECITERS.get(reciter_key, RECITERS[DEFAULT_RECITER_KEY]).get("bitrate", "128k")
 
     async def fetch_ayah(surah_num: int, ayah_num: int) -> Optional[bytes]:
-        key = (reciter_key, surah_num, ayah_num)
+        key = (surah_num, ayah_num)
         if key in AUDIO_CACHE:
             return AUDIO_CACHE[key]
 
-        disk_path = audio_disk_path(reciter_key, surah_num, ayah_num)
+        disk_path = audio_disk_path(surah_num, ayah_num)
         if disk_path.exists():
             try:
                 data = disk_path.read_bytes()
@@ -678,21 +514,16 @@ async def build_pages_audio(
                 logger.warning("تعذرت قراءة الصوت من القرص: %s", disk_path)
 
         async with semaphore:
-            url = f"{base_url}/{surah_num:03d}{ayah_num:03d}.mp3"
-            raw_data = await download_bytes_with_retry(url)
-            if not raw_data:
-                return None
-
-            # تشذيب السكوت الزائد قبل التخزين/الدمج (انظر شرح الدالة).
-            data = await trim_silence_ffmpeg(raw_data, bitrate)
-
-            if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
-                AUDIO_CACHE.clear()
-            AUDIO_CACHE[key] = data
-            try:
-                disk_path.write_bytes(data)
-            except Exception:
-                logger.warning("تعذر حفظ الصوت على القرص: %s", disk_path)
+            url = f"{RECITER_AUDIO_URL}/{surah_num:03d}{ayah_num:03d}.mp3"
+            data = await download_bytes_with_retry(url)
+            if data:
+                if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
+                    AUDIO_CACHE.clear()
+                AUDIO_CACHE[key] = data
+                try:
+                    disk_path.write_bytes(data)
+                except Exception:
+                    logger.warning("تعذر حفظ الصوت على القرص: %s", disk_path)
             return data
 
     results = await asyncio.gather(*(fetch_ayah(s, a) for s, a in unique_ayahs))
@@ -701,7 +532,7 @@ async def build_pages_audio(
     if not audio_chunks:
         return None
 
-    return await concat_audio_chunks_ffmpeg(audio_chunks)
+    return b"".join(audio_chunks)
 
 
 async def deliver_audio_result(
@@ -709,7 +540,6 @@ async def deliver_audio_result(
     surah: dict,
     combined_audio: Optional[bytes],
     title_suffix: str,
-    reciter_name: str,
     waiting_msg: Optional[Message] = None,
 ):
     if not combined_audio:
@@ -736,7 +566,7 @@ async def deliver_audio_result(
         audio_file = BufferedInputFile(
             combined_audio, filename=f"{surah['name']}_{title_suffix}.mp3"
         )
-        caption_text = f"القارئ : <b>{reciter_name}</b> {EMOJI_RECITER_ICON}"
+        caption_text = f"القارئ : <b>{RECITER_NAME}</b> <tg-emoji emoji-id=\"6269163801178804220\">🎙</tg-emoji>"
 
         await answer_target.answer_audio(
             audio=audio_file, caption=caption_text, parse_mode=ParseMode.HTML
@@ -761,12 +591,6 @@ def build_home_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="أختيار القارئ",
-                    callback_data="choose_reciter",
-                    style="danger",
-                    icon_custom_emoji_id=ID_RECITER_ICON,
-                ),
-                InlineKeyboardButton(
                     text="القرآن الكريم",
                     callback_data="open_quran_section",
                     style="danger",
@@ -790,32 +614,6 @@ def build_home_menu() -> InlineKeyboardMarkup:
             ],
         ]
     )
-
-
-def build_reciter_menu(current_key: str) -> InlineKeyboardMarkup:
-    rows = []
-    for key, info in RECITERS.items():
-        mark = "✅ " if key == current_key else ""
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text=f"{mark}{info['name']}",
-                    callback_data=f"set_reciter:{key}",
-                    style="success" if key == current_key else "primary",
-                    icon_custom_emoji_id=ID_RECITER_ICON,
-                )
-            ]
-        )
-    rows.append(
-        [
-            InlineKeyboardButton(
-                text="القائمة الرئيسية",
-                callback_data="back_to_home",
-                icon_custom_emoji_id=ID_MAIN_HOME,
-            )
-        ]
-    )
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def build_surah_list_menu(page: int = 0) -> InlineKeyboardMarkup:
@@ -1105,40 +903,6 @@ async def on_back_to_home(callback: CallbackQuery, state: FSMContext):
         pass
 
 
-@router.callback_query(F.data == "choose_reciter")
-async def on_choose_reciter(callback: CallbackQuery):
-    await callback.answer()
-    current_key = get_user_reciter_key(callback.from_user.id)
-    text = f"<b>أختر القارئ</b> الذي تفضله {EMOJI_RECITER_ICON}"
-    try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=build_reciter_menu(current_key),
-            parse_mode=ParseMode.HTML,
-        )
-    except TelegramAPIError:
-        pass
-
-
-@router.callback_query(F.data.startswith("set_reciter:"))
-async def on_set_reciter(callback: CallbackQuery):
-    key = callback.data.split(":", 1)[1]
-    if key not in RECITERS:
-        await callback.answer("⚠️ قارئ غير معروف.", show_alert=True)
-        return
-    USER_RECITER[callback.from_user.id] = key
-    await callback.answer(f"تم اختيار القارئ: {RECITERS[key]['name']}")
-    text = f"<b>أختر القارئ</b> الذي تفضله {EMOJI_RECITER_ICON}"
-    try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=build_reciter_menu(key),
-            parse_mode=ParseMode.HTML,
-        )
-    except TelegramAPIError:
-        pass
-
-
 @router.callback_query(F.data == "open_quran_section")
 async def on_open_quran_section(callback: CallbackQuery):
     await callback.answer()
@@ -1216,10 +980,8 @@ async def on_single_page_selected(callback: CallbackQuery):
     _, surah_key, page_str = callback.data.split(":")
     page = int(page_str)
     surah = SURAHS_DICT.get(surah_key)
-    reciter_key = get_user_reciter_key(callback.from_user.id)
-    reciter_name = RECITERS[reciter_key]["name"]
 
-    audio_task = asyncio.create_task(build_pages_audio([page], reciter_key))
+    audio_task = asyncio.create_task(build_pages_audio([page]))
     caption_text = f"صفحة {page} {EMOJI_CAPTION_HTML}"
 
     img_waiting_msg = await callback.message.answer(
@@ -1250,7 +1012,7 @@ async def on_single_page_selected(callback: CallbackQuery):
         pass
 
     audio_waiting_msg = await callback.message.answer(
-        f"<b>جارِ تجهيز</b> المقطع الصوتي بصوت <b>{reciter_name}</b> {EMOJI_WAITING_HTML}",
+        f"<b>جارِ تجهيز</b> المقطع الصوتي بصوت <b>{RECITER_NAME}</b> {EMOJI_WAITING_HTML}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -1260,7 +1022,6 @@ async def on_single_page_selected(callback: CallbackQuery):
         surah,
         combined_audio,
         f"صفحة_{page}",
-        reciter_name,
         waiting_msg=audio_waiting_msg,
     )
 
@@ -1316,11 +1077,8 @@ async def handle_page_range(message: Message, state: FSMContext):
         )
         return
 
-    reciter_key = get_user_reciter_key(message.from_user.id)
-    reciter_name = RECITERS[reciter_key]["name"]
-
     pages = list(range(start_page, end_page + 1))
-    audio_task = asyncio.create_task(build_pages_audio(pages, reciter_key))
+    audio_task = asyncio.create_task(build_pages_audio(pages))
 
     img_waiting_msg = await message.answer(
         f"<b>جارِ تحميل</b> صور الصفحات {EMOJI_WAITING_HTML}",
@@ -1348,7 +1106,7 @@ async def handle_page_range(message: Message, state: FSMContext):
         pass
 
     audio_waiting_msg = await message.answer(
-        f"<b>جارِ تجهيز</b> المقطع الصوتي للنطاق بصوت <b>{reciter_name}</b> {EMOJI_WAITING_HTML}",
+        f"<b>جارِ تجهيز</b> المقطع الصوتي للنطاق بصوت <b>{RECITER_NAME}</b> {EMOJI_WAITING_HTML}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -1358,7 +1116,6 @@ async def handle_page_range(message: Message, state: FSMContext):
         surah,
         combined_audio,
         f"صفحات_{start_page}-{end_page}",
-        reciter_name,
         waiting_msg=audio_waiting_msg,
     )
     await state.clear()
