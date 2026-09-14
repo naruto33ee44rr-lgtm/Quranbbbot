@@ -33,14 +33,15 @@ from aiogram.types import (
 # ============================================================================
 
 async def handle(request):
-    return web.Response(text="Bot is running!")
+    return web.Response(text="Quran Bot is running online 24/7!")
 
 async def start_dummy_server():
     app = web.Application()
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.environ.get("PORT", 8080))
+    # جلب البورت المخصص من بيئة Render تلقائياً مع تعيين 10000 كقيمة افتراضية
+    port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
