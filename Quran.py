@@ -106,11 +106,11 @@ EMOJI_RECITER_ICON = f'<tg-emoji emoji-id="{ID_RECITER_ICON}">🎙</tg-emoji>'
 # ============================================================================
 
 RECITERS: dict[str, dict] = {
-    "dossary": {"name": "ياسر الدوسري", "folder": "Yasser_Ad-Dussary_128kbps"},
-    "alafasy": {"name": "مشاري العفاسي", "folder": "Alafasy_128kbps"},
-    "abdulbasit": {"name": "عبد الباسط عبد الصمد", "folder": "Abdul_Basit_Murattal_192kbps"},
-    "sudais": {"name": "عبد الرحمن السديس", "folder": "Abdurrahmaan_As-Sudais_192kbps"},
-    "minshawy": {"name": "محمد صديق المنشاوي", "folder": "Minshawy_Murattal_128kbps"},
+    "dossary": {"name": "ياسر الدوسري", "folder": "Yasser_Ad-Dussary_128kbps", "bitrate": "128k"},
+    "alafasy": {"name": "مشاري العفاسي", "folder": "Alafasy_128kbps", "bitrate": "128k"},
+    "abdulbasit": {"name": "عبد الباسط عبد الصمد", "folder": "Abdul_Basit_Murattal_192kbps", "bitrate": "192k"},
+    "sudais": {"name": "عبد الرحمن السديس", "folder": "Abdurrahmaan_As-Sudais_192kbps", "bitrate": "192k"},
+    "minshawy": {"name": "محمد صديق المنشاوي", "folder": "Minshawy_Murattal_128kbps", "bitrate": "128k"},
 }
 DEFAULT_RECITER_KEY = "dossary"
 
@@ -185,7 +185,9 @@ def page_image_disk_path(page: int) -> Path:
 
 
 def audio_disk_path(reciter_key: str, surah_num: int, ayah_num: int) -> Path:
-    reciter_dir = AUDIO_FILES_DIR / reciter_key
+    # لاحقة "_trimmed" تفصل الكاش الجديد (بعد تشذيب السكوت) عن أي كاش قديم
+    # كان مخزّناً بالنسخة الخام قبل هذا التعديل، لتفادي تقديم صوت فيه توقف.
+    reciter_dir = AUDIO_FILES_DIR / f"{reciter_key}_trimmed"
     reciter_dir.mkdir(parents=True, exist_ok=True)
     return reciter_dir / f"{surah_num:03d}{ayah_num:03d}.mp3"
 
@@ -515,6 +517,63 @@ async def get_page_ayahs(page: int) -> list[tuple[int, int]]:
     return result
 
 
+async def trim_silence_ffmpeg(audio_bytes: bytes, bitrate: str = "128k") -> bytes:
+    """
+    يشذّب أي سكوت زائد من بداية ونهاية مقطع الآية قبل دمجه مع بقية الآيات.
+
+    السبب: ملفات everyayah.com لبعض القرّاء (كل من عدا الدوسري هنا) فيها
+    سكوت/صمت مُسجَّل فعلياً داخل ملف كل آية (بداية أو نهاية المقطع)،
+    فحين تُدمج الآيات ببعضها بـ "-c copy" (بدون إعادة ترميز) يبقى هذا
+    السكوت كما هو فيظهر كـ"توقف/تقطع" بين كل آية والتي تليها. حلّها هو
+    قص هذا السكوت الفعلي من كل مقطع قبل الدمج، وليس مشكلة في طريقة الدمج
+    نفسها.
+    """
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            in_path = tmp_path / "in.mp3"
+            out_path = tmp_path / "out.mp3"
+            in_path.write_bytes(audio_bytes)
+
+            # يقصّ من البداية ثم (بعكس الاتجاه) من النهاية أي سكوت أعمق من
+            # -45dB يدوم أكثر من 0.15 ثانية، بدون المساس بالصوت المسموع.
+            silence_filter = (
+                "silenceremove=start_periods=1:start_silence=0.15:"
+                "start_threshold=-45dB:detection=peak,areverse,"
+                "silenceremove=start_periods=1:start_silence=0.15:"
+                "start_threshold=-45dB:detection=peak,areverse"
+            )
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-loglevel", "error",
+                "-i", str(in_path),
+                "-af", silence_filter,
+                "-c:a", "libmp3lame",
+                "-b:a", bitrate,
+                str(out_path),
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+            if proc.returncode == 0 and out_path.exists():
+                return out_path.read_bytes()
+            logger.warning(
+                "فشل تشذيب السكوت من مقطع آية (code=%s): %s",
+                proc.returncode,
+                stderr.decode(errors="ignore")[:300],
+            )
+    except FileNotFoundError:
+        logger.error("ffmpeg غير مثبت، تعذر تشذيب السكوت.")
+    except Exception:
+        logger.exception("خطأ غير متوقع أثناء تشذيب السكوت من مقطع آية")
+
+    return audio_bytes
+
+
 async def concat_audio_chunks_ffmpeg(chunks: list[bytes]) -> Optional[bytes]:
     """
     يدمج عدة ملفات MP3 مستقلة في ملف واحد صالح باستخدام ffmpeg (concat demuxer).
@@ -600,6 +659,7 @@ async def build_pages_audio(
 
     semaphore = asyncio.Semaphore(AUDIO_DOWNLOAD_CONCURRENCY)
     base_url = reciter_audio_base_url(reciter_key)
+    bitrate = RECITERS.get(reciter_key, RECITERS[DEFAULT_RECITER_KEY]).get("bitrate", "128k")
 
     async def fetch_ayah(surah_num: int, ayah_num: int) -> Optional[bytes]:
         key = (reciter_key, surah_num, ayah_num)
@@ -619,15 +679,20 @@ async def build_pages_audio(
 
         async with semaphore:
             url = f"{base_url}/{surah_num:03d}{ayah_num:03d}.mp3"
-            data = await download_bytes_with_retry(url)
-            if data:
-                if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
-                    AUDIO_CACHE.clear()
-                AUDIO_CACHE[key] = data
-                try:
-                    disk_path.write_bytes(data)
-                except Exception:
-                    logger.warning("تعذر حفظ الصوت على القرص: %s", disk_path)
+            raw_data = await download_bytes_with_retry(url)
+            if not raw_data:
+                return None
+
+            # تشذيب السكوت الزائد قبل التخزين/الدمج (انظر شرح الدالة).
+            data = await trim_silence_ffmpeg(raw_data, bitrate)
+
+            if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
+                AUDIO_CACHE.clear()
+            AUDIO_CACHE[key] = data
+            try:
+                disk_path.write_bytes(data)
+            except Exception:
+                logger.warning("تعذر حفظ الصوت على القرص: %s", disk_path)
             return data
 
     results = await asyncio.gather(*(fetch_ayah(s, a) for s, a in unique_ayahs))
@@ -696,19 +761,17 @@ def build_home_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
+                    text="أختيار القارئ",
+                    callback_data="choose_reciter",
+                    style="danger",
+                    icon_custom_emoji_id=ID_RECITER_ICON,
+                ),
+                InlineKeyboardButton(
                     text="القرآن الكريم",
                     callback_data="open_quran_section",
                     style="danger",
                     icon_custom_emoji_id=ID_MAIN_SECTION,
                 ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="أختيار القارئ",
-                    callback_data="choose_reciter",
-                    style="success",
-                    icon_custom_emoji_id=ID_RECITER_ICON,
-                )
             ],
             [
                 InlineKeyboardButton(
