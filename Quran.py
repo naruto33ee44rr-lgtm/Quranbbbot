@@ -64,7 +64,7 @@ ID_BOT_OWNER_EMOJI = "6158862632926319619"  # إيموجي Bot Owner
 ID_DEV_USERNAME_EMOJI = "6269163801178804220"  # إيموجي اليوزر
 ID_NAV_NEXT = "5291842193382730408"  # التالي
 ID_NAV_PREV = "5291993277447301940"  # السابق
-ID_RECITER_EMOJI = "6071346841704733378"  # زر اختر القارئ
+ID_RECITER_EMOJI = "6269163801178804220"  # إيموجي زر واختر القارئ
 ID_RECITER_OPTION_EMOJI = "6269163801178804220"  # إيموجي خيارات اختيار القارئ
 ID_MODE_BTN = "5355082606109013423"  # إيموجي أزرار الاختيار
 ID_WAITING = "5355226302829835543"  # إيموجي الانتظار
@@ -85,7 +85,7 @@ ID_SECURITY_PANEL = "6269316311172518259"
 EMOJI_WELCOME = f'<tg-emoji emoji-id="{ID_WELCOME_EMOJI}">👋</tg-emoji>'
 EMOJI_BOT_OWNER = f'<tg-emoji emoji-id="{ID_BOT_OWNER_EMOJI}">👑</tg-emoji>'
 EMOJI_DEV_USERNAME = f'<tg-emoji emoji-id="{ID_DEV_USERNAME_EMOJI}">👤</tg-emoji>'
-EMOJI_RECITER_HTML = f'<tg-emoji emoji-id="{ID_RECITER_EMOJI}">🎙</tg-emoji>'
+EMOJI_RECITER_HTML = f'<tg-emoji emoji-id="6269163801178804220">🎙</tg-emoji>'
 EMOJI_WAITING_HTML = f'<tg-emoji emoji-id="{ID_WAITING}">⏳</tg-emoji>'
 EMOJI_FUTURE_SECTION = f'<tg-emoji emoji-id="{ID_FUTURE_SECTION}">📌</tg-emoji>'
 
@@ -93,7 +93,7 @@ EMOJI_MAIN_SECTION = f'<tg-emoji emoji-id="{ID_MAIN_SECTION}">📖</tg-emoji>'
 EMOJI_SUGGESTIONS_ICON = f'<tg-emoji emoji-id="{ID_SUGGESTIONS_ICON}">💡</tg-emoji>'
 EMOJI_SURAH_CHOSEN = f'<tg-emoji emoji-id="{ID_SURAH_CHOSEN}">✨</tg-emoji>'
 
-EMOJI_SELECT_MODE = f'<tg-emoji emoji-id="5355194215129169036">⚙️</tg-emoji>'
+EMOJI_SELECT_MODE = f'<tg-emoji emoji-id="6269163801178804220">⚙️</tg-emoji>'
 
 EMOJI_GRID_TITLE = f'<tg-emoji emoji-id="{ID_GRID_TITLE}">📄</tg-emoji>'
 EMOJI_RANGE_TITLE = f'<tg-emoji emoji-id="{ID_RANGE_TITLE}">📚</tg-emoji>'
@@ -101,7 +101,7 @@ EMOJI_ALERT = f'<tg-emoji emoji-id="{ID_ALERT}">⚠️</tg-emoji>'
 EMOJI_CAPTION_HTML = f'<tg-emoji emoji-id="{ID_PAGE_CAPTION}">📖</tg-emoji>'
 EMOJI_SECURITY_PANEL = f'<tg-emoji emoji-id="{ID_SECURITY_PANEL}">🛡️</tg-emoji>'
 
-# قائمة القراء المعتمدة بعد الإصلاح
+# قائمة القراء المعتمدة (بعد حذف العفاسي)
 RECITERS = {
     "dussary": {
         "name": "د. ياسر الدوسري",
@@ -114,10 +114,6 @@ RECITERS = {
     "maher": {
         "name": "ماهر المعيقلي",
         "url": "https://everyayah.com/data/MaherAlMuaiqly128kbps",
-    },
-    "alafasy": {
-        "name": "مشاري العفاسي",
-        "url": "https://everyayah.com/data/Alafasy_128kbps",
     },
 }
 
@@ -974,8 +970,8 @@ async def on_open_reciter_section(callback: CallbackQuery):
     await callback.answer()
     current_reciter = get_user_reciter(callback.from_user.id)
     text = (
-        f"<b>قارئك الآن :</b> {current_reciter['name']} {EMOJI_RECITER_HTML}\n\n"
-        f"أختر القارئ المناسب لك لتطبيق تلاوته {EMOJI_SELECT_MODE}:"
+        f"<b>قارئك الآن :</b> {current_reciter['name']} <tg-emoji emoji-id=\"6269163801178804220\">🎙</tg-emoji>\n\n"
+        f"أختر القارئ المناسب لك لتطبيق تلاوته <tg-emoji emoji-id=\"6269163801178804220\">⚙️</tg-emoji>:"
     )
     try:
         await callback.message.edit_text(
@@ -997,8 +993,8 @@ async def on_set_reciter(callback: CallbackQuery):
 
     current_reciter = get_user_reciter(callback.from_user.id)
     text = (
-        f"<b>قارئك الآن :</b> {current_reciter['name']} {EMOJI_RECITER_HTML}\n\n"
-        f"أختر القارئ المناسب لك لتطبيق تلاوته {EMOJI_SELECT_MODE}:"
+        f"<b>قارئك الآن :</b> {current_reciter['name']} <tg-emoji emoji-id=\"6269163801178804220\">🎙</tg-emoji>\n\n"
+        f"أختر القارئ المناسب لك لتطبيق تلاوته <tg-emoji emoji-id=\"6269163801178804220\">⚙️</tg-emoji>:"
     )
     try:
         await callback.message.edit_text(
