@@ -63,7 +63,6 @@ ID_WELCOME_EMOJI = "5355194215129169036"
 ID_BOT_OWNER_EMOJI = "6158862632926319619"
 ID_DEV_USERNAME_EMOJI = "6269163801178804220"
 ID_RECITER_EMOJI = "6071346841704733378"
-ID_RECITER_SELECTED_EMOJI = "6269163801178804220"
 ID_NAV_NEXT = "5291842193382730408"
 ID_NAV_PREV = "5291993277447301940"
 ID_MODE_BTN = "5355082606109013423"
@@ -86,7 +85,6 @@ EMOJI_WELCOME = f'<tg-emoji emoji-id="{ID_WELCOME_EMOJI}">👋</tg-emoji>'
 EMOJI_BOT_OWNER = f'<tg-emoji emoji-id="{ID_BOT_OWNER_EMOJI}">👑</tg-emoji>'
 EMOJI_DEV_USERNAME = f'<tg-emoji emoji-id="{ID_DEV_USERNAME_EMOJI}">👤</tg-emoji>'
 EMOJI_RECITER_HTML = f'<tg-emoji emoji-id="{ID_RECITER_EMOJI}">🎙</tg-emoji>'
-EMOJI_RECITER_SELECTED_HTML = f'<tg-emoji emoji-id="{ID_RECITER_SELECTED_EMOJI}">✅</tg-emoji>'
 EMOJI_WAITING_HTML = f'<tg-emoji emoji-id="{ID_WAITING}">⏳</tg-emoji>'
 EMOJI_FUTURE_SECTION = f'<tg-emoji emoji-id="{ID_FUTURE_SECTION}">📌</tg-emoji>'
 
@@ -102,49 +100,15 @@ EMOJI_ALERT = f'<tg-emoji emoji-id="{ID_ALERT}">⚠️</tg-emoji>'
 EMOJI_CAPTION_HTML = f'<tg-emoji emoji-id="{ID_PAGE_CAPTION}">📖</tg-emoji>'
 EMOJI_SECURITY_PANEL = f'<tg-emoji emoji-id="{ID_SECURITY_PANEL}">🛡️</tg-emoji>'
 
-# قائمة القرّاء المتاحين ومعرفات السيرفرات المباشرة لتشغيل السور كاملة
-RECITERS = [
-    {
-        "key": "dussary",
-        "name": "د. ياسر الدوسري",
-        "server_url": "https://server11.mp3quran.net/yasser",
-    },
-    {
-        "key": "minshawi",
-        "name": "محمد صديق المنشاوي",
-        "server_url": "https://server10.mp3quran.net/minsh",
-    },
-    {
-        "key": "abdul_basit",
-        "name": "عبد الباسط عبد الصمد",
-        "server_url": "https://server7.mp3quran.net/basit",
-    },
-    {
-        "key": "sudais",
-        "name": "عبد الرحمن السديس",
-        "server_url": "https://server11.mp3quran.net/sds",
-    },
-    {
-        "key": "shuraym",
-        "name": "سعود الشريم",
-        "server_url": "https://server7.mp3quran.net/shur",
-    },
-]
-RECITERS_DICT = {r["key"]: r for r in RECITERS}
-DEFAULT_RECITER_KEY = RECITERS[0]["key"]
-
-# القارئ المختار حالياً لكل مستخدم
-USER_RECITER: dict[int, str] = {}
-
-
-def get_user_reciter(user_id: Optional[int]) -> dict:
-    reciter_key = USER_RECITER.get(user_id, DEFAULT_RECITER_KEY)
-    return RECITERS_DICT.get(reciter_key, RECITERS[0])
-
+# القارئ الوحيد المتاح في البوت (د. ياسر الدوسري)
+DEFAULT_RECITER = {
+    "key": "dussary",
+    "name": "د. ياسر الدوسري",
+    "server_url": "https://server11.mp3quran.net/yasser",
+}
 
 # نص الترويسة لقسم القرآن الكريم
 QURAN_HEADER_TEXT = f'أختر <b>سورة</b> {EMOJI_SELECT_MODE}'
-RECITER_HEADER_TEXT = f'أختر <b>القارئ</b> {EMOJI_RECITER_HTML}'
 
 # نص القائمة الرئيسية
 HOME_TEXT = (
@@ -486,7 +450,7 @@ def chunk_list(items: list, size: int):
 async def send_full_surah_audio(
     answer_target,
     surah: dict,
-    reciter: dict,
+    reciter: dict = DEFAULT_RECITER,
     waiting_msg: Optional[Message] = None,
 ):
     surah_num_str = str(surah['number']).zfill(3)
@@ -523,12 +487,6 @@ def build_home_menu() -> InlineKeyboardMarkup:
                     style="danger",
                     icon_custom_emoji_id=ID_MAIN_SECTION,
                 ),
-                InlineKeyboardButton(
-                    text="أختر القارئ",
-                    callback_data="open_reciter_section",
-                    style="danger",
-                    icon_custom_emoji_id=ID_RECITER_EMOJI,
-                ),
             ],
             [
                 InlineKeyboardButton(
@@ -547,37 +505,6 @@ def build_home_menu() -> InlineKeyboardMarkup:
             ],
         ]
     )
-
-
-def build_reciter_menu(user_id: Optional[int]) -> InlineKeyboardMarkup:
-    selected_key = USER_RECITER.get(user_id, DEFAULT_RECITER_KEY)
-
-    rows = []
-    for reciter in RECITERS:
-        is_selected = reciter["key"] == selected_key
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text=reciter["name"],
-                    callback_data=f"select_reciter:{reciter['key']}",
-                    style="success" if is_selected else "primary",
-                    icon_custom_emoji_id=(
-                        ID_RECITER_SELECTED_EMOJI if is_selected else ID_RECITER_EMOJI
-                    ),
-                )
-            ]
-        )
-
-    rows.append(
-        [
-            InlineKeyboardButton(
-                text="القائمة الرئيسية",
-                callback_data="back_to_home",
-                icon_custom_emoji_id=ID_MAIN_HOME,
-            )
-        ]
-    )
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def build_surah_list_menu(page: int = 0) -> InlineKeyboardMarkup:
@@ -880,39 +807,6 @@ async def on_open_quran_section(callback: CallbackQuery):
         pass
 
 
-@router.callback_query(F.data == "open_reciter_section")
-async def on_open_reciter_section(callback: CallbackQuery):
-    await callback.answer()
-    try:
-        await callback.message.edit_text(
-            RECITER_HEADER_TEXT,
-            reply_markup=build_reciter_menu(callback.from_user.id),
-            parse_mode=ParseMode.HTML,
-        )
-    except TelegramAPIError:
-        pass
-
-
-@router.callback_query(F.data.startswith("select_reciter:"))
-async def on_select_reciter(callback: CallbackQuery):
-    reciter_key = callback.data.split(":", 1)[1]
-    reciter = RECITERS_DICT.get(reciter_key)
-    if not reciter:
-        await callback.answer()
-        return
-
-    USER_RECITER[callback.from_user.id] = reciter_key
-    await callback.answer(f"تم أختيار القارئ: {reciter['name']}")
-    try:
-        await callback.message.edit_text(
-            RECITER_HEADER_TEXT,
-            reply_markup=build_reciter_menu(callback.from_user.id),
-            parse_mode=ParseMode.HTML,
-        )
-    except TelegramAPIError:
-        pass
-
-
 @router.callback_query(F.data.startswith("surah_page:"))
 async def on_surah_page_change(callback: CallbackQuery):
     page = int(callback.data.split(":")[1])
@@ -977,7 +871,6 @@ async def on_single_page_selected(callback: CallbackQuery):
     _, surah_key, page_str = callback.data.split(":")
     page = int(page_str)
     surah = SURAHS_DICT.get(surah_key)
-    reciter = get_user_reciter(callback.from_user.id)
 
     caption_text = f"<b>صفحة {page}</b> {EMOJI_CAPTION_HTML}"
 
@@ -1016,7 +909,7 @@ async def on_single_page_selected(callback: CallbackQuery):
     await send_full_surah_audio(
         callback.message,
         surah,
-        reciter,
+        DEFAULT_RECITER,
         waiting_msg=audio_waiting_msg,
     )
 
@@ -1073,7 +966,6 @@ async def handle_page_range(message: Message, state: FSMContext):
         return
 
     pages = list(range(start_page, end_page + 1))
-    reciter = get_user_reciter(message.from_user.id)
 
     img_waiting_msg = await message.answer(
         f"<b>جارِ</b> تحميل <b>صور الصفحات</b> {EMOJI_WAITING_HTML}",
@@ -1108,7 +1000,7 @@ async def handle_page_range(message: Message, state: FSMContext):
     await send_full_surah_audio(
         message,
         surah,
-        reciter,
+        DEFAULT_RECITER,
         waiting_msg=audio_waiting_msg,
     )
     await state.clear()
@@ -1263,4 +1155,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
