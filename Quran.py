@@ -104,20 +104,83 @@ EMOJI_CAPTION_HTML = f'<tg-emoji emoji-id="{ID_PAGE_CAPTION}">📖</tg-emoji>'
 EMOJI_SECURITY_PANEL = f'<tg-emoji emoji-id="{ID_SECURITY_PANEL}">🛡️</tg-emoji>'
 
 # قائمة القرّاء المتاحين للأختيار
+# "source": "everyayah"  -> يعتمد على everyayah.com بترقيم (سورة/آية) القديم.
+# "source": "quranhub"   -> يعتمد على شبكة توزيع محتوى QuranHub (misraj-ai/quranhub)
+#                           وتحتاج رقم الآية "العالمي" (من 1 إلى 6236) بدل رقمها داخل السورة.
 RECITERS = [
     {
         "key": "dussary",
         "name": "د. ياسر الدوسري",
+        "source": "everyayah",
         "audio_url": "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps",
     },
     {
         "key": "minshawi",
         "name": "محمد صديق المنشاوي",
-        "audio_url": "https://everyayah.com/data/Minshawy_Murattal_128kbps",
+        "source": "quranhub",
+        "edition": "ar.minshawi.hafs",
+    },
+    {
+        "key": "abdulbasit",
+        "name": "عبد الباسط عبد الصمد",
+        "source": "quranhub",
+        "edition": "ar.abdulbasitmurattal.hafs",
+    },
+    {
+        "key": "sudais",
+        "name": "عبد الرحمن السديس",
+        "source": "quranhub",
+        "edition": "ar.abdurrahmaansudais.hafs",
+    },
+    {
+        "key": "muaiqly",
+        "name": "ماهر المعيقلي",
+        "source": "quranhub",
+        "edition": "ar.mahermuaiqly.hafs",
+    },
+    {
+        "key": "shuraim",
+        "name": "سعود الشريم",
+        "source": "quranhub",
+        "edition": "ar.saoodshuraym.hafs",
     },
 ]
 RECITERS_DICT = {r["key"]: r for r in RECITERS}
 DEFAULT_RECITER_KEY = RECITERS[0]["key"]
+
+# نقطة نهاية شبكة توزيع محتوى QuranHub لملفات الصوت لكل آية على حِدة
+# (رابط حقيقي تم التحقق منه من واجهة QuranHub البرمجية المباشرة: quranhub.b-cdn.net)
+QURANHUB_AUDIO_BASE = "https://quranhub.b-cdn.net/quran/audio"
+QURANHUB_AUDIO_BITRATE = 128
+
+# عدد آيات كل سورة (رواية حفص عن عاصم) بالترتيب من السورة 1 إلى 114
+# يُستخدم لحساب "رقم الآية العالمي" (1 إلى 6236) المطلوب من QuranHub CDN
+SURAH_AYAH_COUNTS = [
+    7, 286, 200, 176, 120, 165, 206, 75, 129, 109,
+    123, 111, 43, 52, 99, 128, 111, 110, 98, 135,
+    112, 78, 118, 64, 77, 227, 93, 88, 69, 60,
+    34, 30, 73, 54, 45, 83, 182, 88, 75, 85,
+    54, 53, 89, 59, 37, 35, 38, 29, 18, 45,
+    60, 49, 62, 55, 78, 96, 29, 22, 24, 13,
+    14, 11, 11, 18, 12, 12, 30, 52, 52, 44,
+    28, 28, 20, 56, 40, 31, 50, 40, 46, 42,
+    29, 19, 36, 25, 22, 17, 19, 26, 30, 20,
+    15, 21, 11, 8, 8, 19, 5, 8, 8, 11,
+    11, 8, 3, 9, 5, 4, 7, 3, 6, 3,
+    5, 4, 5, 6,
+]
+assert len(SURAH_AYAH_COUNTS) == 114 and sum(SURAH_AYAH_COUNTS) == 6236
+
+# مجموع تراكمي (عدد آيات كل السور التي تسبق سورة معينة) لحساب الترقيم العالمي بسرعة
+_SURAH_AYAH_CUMULATIVE = [0]
+for _count in SURAH_AYAH_COUNTS:
+    _SURAH_AYAH_CUMULATIVE.append(_SURAH_AYAH_CUMULATIVE[-1] + _count)
+
+
+def global_ayah_number(surah_num: int, ayah_num_in_surah: int) -> int:
+    """يحول (رقم السورة، رقم الآية داخل السورة) إلى الترقيم العالمي (1-6236)."""
+    return _SURAH_AYAH_CUMULATIVE[surah_num - 1] + ayah_num_in_surah
+
 
 # القارئ المختار حالياً لكل مستخدم (يبقى القارئ الافتراضي إن لم يختر أحداً)
 USER_RECITER: dict[int, str] = {}
@@ -197,9 +260,28 @@ def page_image_disk_path(page: int) -> Path:
 
 
 def audio_disk_path(reciter_key: str, surah_num: int, ayah_num: int) -> Path:
+    # نستخدم مفتاح القارئ كاسم مجلد فرعي، لذا لا تعارض بين مصادر مختلفة
+    # حتى لو تشابه ترقيم السورة/الآية.
     reciter_dir = AUDIO_FILES_DIR / reciter_key
     reciter_dir.mkdir(parents=True, exist_ok=True)
     return reciter_dir / f"{surah_num:03d}{ayah_num:03d}.mp3"
+
+
+def build_ayah_audio_url(reciter: dict, surah_num: int, ayah_num: int) -> Optional[str]:
+    """يبني رابط تحميل آية واحدة حسب مصدر القارئ (everyayah أو quranhub)."""
+    source = reciter.get("source", "everyayah")
+    if source == "quranhub":
+        edition = reciter.get("edition")
+        if not edition:
+            return None
+        g_num = global_ayah_number(surah_num, ayah_num)
+        return f"{QURANHUB_AUDIO_BASE}/{QURANHUB_AUDIO_BITRATE}/{edition}/{g_num}.mp3"
+
+    # المصدر الافتراضي: everyayah.com بترقيم سورة/آية محلي (SSSAAA)
+    reciter_audio_url = reciter.get("audio_url")
+    if not reciter_audio_url:
+        return None
+    return f"{reciter_audio_url}/{surah_num:03d}{ayah_num:03d}.mp3"
 
 
 PAGE_CACHE: dict[int, str] = _load_page_file_id_cache()
@@ -578,7 +660,6 @@ async def build_pages_audio(pages: list[int], reciter: dict) -> Optional[bytes]:
         return None
 
     reciter_key = reciter["key"]
-    reciter_audio_url = reciter["audio_url"]
 
     semaphore = asyncio.Semaphore(AUDIO_DOWNLOAD_CONCURRENCY)
 
@@ -599,7 +680,9 @@ async def build_pages_audio(pages: list[int], reciter: dict) -> Optional[bytes]:
                 logger.warning("تعذرت قراءة الصوت من القرص: %s", disk_path)
 
         async with semaphore:
-            url = f"{reciter_audio_url}/{surah_num:03d}{ayah_num:03d}.mp3"
+            url = build_ayah_audio_url(reciter, surah_num, ayah_num)
+            if not url:
+                return None
             data = await download_bytes_with_retry(url)
             if data:
                 if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
@@ -1430,3 +1513,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
