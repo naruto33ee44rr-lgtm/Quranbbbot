@@ -29,7 +29,7 @@ from aiogram.types import (
 )
 
 # ============================================================================
-# دالة سيرفر الويب الوهمي ربط البورت (Render Web Service)
+# سيرفر وهمي لإبقاء البوت نشطاً على المنصات السحابية (Render / Heroku)
 # ============================================================================
 
 async def handle(request):
@@ -49,122 +49,82 @@ async def start_dummy_server():
 # ============================================================================
 
 BOT_TOKEN = "8985243390:AAFwMzMbfit3_0OKb77KvGPOj5ZSBQmzRpU"
-
 DEVELOPER_USERNAME = "mh5_c"
-
-# آيدي المالك (الرقمي) المسموح له بفتح لوحة تحكم الأمن.
 OWNER_ID = 1317171223
 
-# الرمز الشفاف للواجهات
-INVISIBLE_SPACE = "\u200b"
-
-# معرفات الإيموجيات المخصصة (Custom Emoji IDs)
-ID_WELCOME_EMOJI = "5355194215129169036"  # إيموجي أهلاً / أختيار السورة والنمط
-ID_BOT_OWNER_EMOJI = "6158862632926319619"  # إيموجي Bot Owner
-ID_DEV_USERNAME_EMOJI = "6269163801178804220"  # إيموجي اليوزر
-ID_RECITER_EMOJI = "6071346841704733378"  # إيموجي القارئ
-ID_RECITER_SELECTED_EMOJI = "6269163801178804220"  # إيموجي تم أختيار القارئ
-ID_NAV_NEXT = "5291842193382730408"  # التالي
-ID_NAV_PREV = "5291993277447301940"  # السابق
-ID_MODE_BTN = "5355082606109013423"  # إيموجي أزرار الاختيار
-ID_WAITING = "5355226302829835543"  # إيموجي الانتظار
-ID_FUTURE_SECTION = "5355295550587549286"  # إيموجي الأقسام المستقبلية
-
-ID_MAIN_SECTION = "6071207281037417686"
-ID_SURAH_ICON = "6077896035470942395"
-ID_MAIN_HOME = "5472393221118120942"
-ID_PAGE_CAPTION = "6071355019322465070"
-ID_SUGGESTIONS_ICON = "6269219060228035378"
-ID_SURAH_CHOSEN = "5830252584870351231"
+# معرفات الإيموجيات المخصصة
+ID_WELCOME_EMOJI = "5355194215129169036"
+ID_BOT_OWNER_EMOJI = "6158862632926319619"
+ID_DEV_USERNAME_EMOJI = "6269163801178804220"
+ID_RECITER_EMOJI = "6071346841704733378"
+ID_RECITER_SELECTED_EMOJI = "6269163801178804220"
+ID_WAITING = "5355226302829835543"
 ID_GRID_TITLE = "6070970164482939513"
 ID_RANGE_TITLE = "6071000899268910391"
 ID_ALERT = "6269316311172518259"
+ID_PAGE_CAPTION = "6071355019322465070"
 ID_SECURITY_PANEL = "6269316311172518259"
+ID_SURAH_CHOSEN = "5830252584870351231"
 
-# صيغ HTML الجاهزة للعرض
 EMOJI_WELCOME = f'<tg-emoji emoji-id="{ID_WELCOME_EMOJI}">👋</tg-emoji>'
 EMOJI_BOT_OWNER = f'<tg-emoji emoji-id="{ID_BOT_OWNER_EMOJI}">👑</tg-emoji>'
 EMOJI_DEV_USERNAME = f'<tg-emoji emoji-id="{ID_DEV_USERNAME_EMOJI}">👤</tg-emoji>'
 EMOJI_RECITER_HTML = f'<tg-emoji emoji-id="{ID_RECITER_EMOJI}">🎙</tg-emoji>'
-EMOJI_RECITER_SELECTED_HTML = f'<tg-emoji emoji-id="{ID_RECITER_SELECTED_EMOJI}">✅</tg-emoji>'
 EMOJI_WAITING_HTML = f'<tg-emoji emoji-id="{ID_WAITING}">⏳</tg-emoji>'
-EMOJI_FUTURE_SECTION = f'<tg-emoji emoji-id="{ID_FUTURE_SECTION}">📌</tg-emoji>'
-
-EMOJI_MAIN_SECTION = f'<tg-emoji emoji-id="{ID_MAIN_SECTION}">📖</tg-emoji>'
-EMOJI_SUGGESTIONS_ICON = f'<tg-emoji emoji-id="{ID_SUGGESTIONS_ICON}">💡</tg-emoji>'
 EMOJI_SURAH_CHOSEN = f'<tg-emoji emoji-id="{ID_SURAH_CHOSEN}">✨</tg-emoji>'
-
 EMOJI_SELECT_MODE = f'<tg-emoji emoji-id="{ID_WELCOME_EMOJI}">⚙️</tg-emoji>'
-
 EMOJI_GRID_TITLE = f'<tg-emoji emoji-id="{ID_GRID_TITLE}">📄</tg-emoji>'
 EMOJI_RANGE_TITLE = f'<tg-emoji emoji-id="{ID_RANGE_TITLE}">📚</tg-emoji>'
 EMOJI_ALERT = f'<tg-emoji emoji-id="{ID_ALERT}">⚠️</tg-emoji>'
 EMOJI_CAPTION_HTML = f'<tg-emoji emoji-id="{ID_PAGE_CAPTION}">📖</tg-emoji>'
 EMOJI_SECURITY_PANEL = f'<tg-emoji emoji-id="{ID_SECURITY_PANEL}">🛡️</tg-emoji>'
 
-# قائمة القرّاء المتاحين للأختيار
 RECITERS = [
-    {
-        "key": "dussary",
-        "name": "د. ياسر الدوسري",
-        "audio_url": "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps",
-    },
-    {
-        "key": "minshawi",
-        "name": "محمد صديق المنشاوي",
-        "audio_url": "https://everyayah.com/data/Minshawy_Murattal_128kbps",
-    },
-    {
-        "key": "abdul_basit",
-        "name": "عبد الباسط عبد الصمد",
-        "audio_url": "https://everyayah.com/data/Abdul_Basit_Murattal_192kbps",
-    },
-    {
-        "key": "sudais",
-        "name": "عبد الرحمن السديس",
-        "audio_url": "https://everyayah.com/data/Abdurrahmaan_As-Sudais_192kbps",
-    },
-    {
-        "key": "muaiqly",
-        "name": "ماهر المعيقلي",
-        "audio_url": "https://everyayah.com/data/MaherAlMuaiqly128kbps",
-    },
-    {
-        "key": "shuraym",
-        "name": "سعود الشريم",
-        "audio_url": "https://everyayah.com/data/Saood_ash-Shuraym_128kbps",
-    },
+    {"key": "dussary", "name": "د. ياسر الدوسري", "audio_url": "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps"},
+    {"key": "minshawi", "name": "محمد صديق المنشاوي", "audio_url": "https://everyayah.com/data/Minshawy_Murattal_128kbps"},
+    {"key": "abdul_basit", "name": "عبد الباسط عبد الصمد", "audio_url": "https://everyayah.com/data/Abdul_Basit_Murattal_192kbps"},
+    {"key": "sudais", "name": "عبد الرحمن السديس", "audio_url": "https://everyayah.com/data/Abdurrahmaan_As-Sudais_192kbps"},
+    {"key": "shuraym", "name": "سعود الشريم", "audio_url": "https://everyayah.com/data/Saood_ash-Shuraym_128kbps"},
 ]
 RECITERS_DICT = {r["key"]: r for r in RECITERS}
 DEFAULT_RECITER_KEY = RECITERS[0]["key"]
-
-# القارئ المختار حالياً لكل مستخدم (يبقى القارئ الافتراضي إن لم يختر أحداً)
 USER_RECITER: dict[int, str] = {}
+USER_THEME: dict[int, str] = {}
 
+AZKAR_DATA = {
+    "sabah": [
+        {"text": "أَصْبَحْنَا وَأَصْبَحَ الْمُلْكُ لِلَّهِ، وَالْحَمْدُ لِلَّهِ لاَ إِلَهَ إِلاَّ اللَّهُ وَحْدَهُ لاَ شَرِيكَ لَهُ.", "count": 1},
+        {"text": "اللَّهُمَّ بِكَ أَصْبَحْنَا، وَبِكَ أَمْسَيْنَا، وَبِكَ نَحْيَا، وَبِكَ نَمُوتُ وَإِلَيْكَ النُّشُورُ.", "count": 1},
+        {"text": "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ: عَدَدَ خَلْقِهِ، وَرِضَا نَفْسِهِ، وَزِنَةَ عَرْشِهِ، وَمِدَادَ كَلِمَاتِهِ.", "count": 3},
+        {"text": "يَا حَيُّ يَا قَيُّومُ بِرَحْمَتِكَ أَسْتَغِيثُ أَصْلِحْ لِي شَأْنِي كُلَّهُ وَلاَ تَكِلْنِي إِلَى نَفْسِي طَرْفَةَ عَيْنٍ.", "count": 1}
+    ],
+    "mosa": [
+        {"text": "أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ، وَالْحَمْدُ لِلَّهِ لاَ إِلَهَ إِلاَّ اللَّهُ وَحْدَهُ لاَ شَرِيكَ لَهُ.", "count": 1},
+        {"text": "اللَّهُمَّ بِكَ أَمْسَيْنَا، وَبِكَ أَصْبَحْنَا، وَبِكَ نَحْيَا، وَبِكَ نَمُوتُ وَإِلَيْكَ الْمَصِيرُ.", "count": 1},
+        {"text": "أَعُوذُ بِكَلِمَاتِ اللَّهِ التَّامَّاتِ مِنْ شَرِّ مَا خَلَقَ.", "count": 3}
+    ],
+    "sleep": [
+        {"text": "بِاسْمِكَ رَبِّي وَضَعْتُ جَنْبِي، وَبِاسْمِكَ أَرْفَعُهُ، فَإِنْ أَمْسَكْتَ نَفْسِي فَارْحَمْهَا.", "count": 1},
+        {"text": "اللَّهُمَّ قِنِي عَذَابَكَ يَوْمَ تَبْعَثُ عِبَادَكَ.", "count": 3}
+    ]
+}
 
-def get_user_reciter(user_id: Optional[int]) -> dict:
-    reciter_key = USER_RECITER.get(user_id, DEFAULT_RECITER_KEY)
-    return RECITERS_DICT.get(reciter_key, RECITERS[0])
-
-
-# نص الترويسة لقسم القرآن الكريم
 QURAN_HEADER_TEXT = f'أختر <b>سورة</b> {EMOJI_SELECT_MODE}'
 RECITER_HEADER_TEXT = f'أختر <b>القارئ</b> {EMOJI_RECITER_HTML}'
 
-# نص القائمة الرئيسية
-HOME_TEXT = (
-    f"<b>أهلاً</b>، أختر أحد <b>الأقسام</b> {EMOJI_WELCOME} :\n\n\n"
-    f"<b>سيتم أضافة أقسام جديدة <u>مستقبلاً</u></b> {EMOJI_FUTURE_SECTION}\n\n"
-    f"<b>Bot Owner</b> {EMOJI_BOT_OWNER} <b>@{DEVELOPER_USERNAME}</b> {EMOJI_DEV_USERNAME}"
-)
+def get_home_text(user_id: Optional[int]) -> str:
+    theme = USER_THEME.get(user_id, "light")
+    theme_status = "🌙 الوضع الليلي مفعل" if theme == "dark" else "☀️ الوضع النهاري مفعل"
+    return (
+        f"<b>أهلاً بك في بوت القرآن الكريم والأذكار</b> {EMOJI_WELCOME}\n\n"
+        f"الحالة الحالية: <b>{theme_status}</b>\n\n"
+        f"<b>Bot Owner</b> {EMOJI_BOT_OWNER} <b>@{DEVELOPER_USERNAME}</b> {EMOJI_DEV_USERNAME}"
+    )
 
 PAGE_IMAGE_URL_TEMPLATE = "https://raw.githubusercontent.com/QuranHub/quran-pages-images/main/kfgqpc/hafs-wasat/{page}.jpg"
 QURAN_COM_PAGE_VERSES_API_URL = "https://api.quran.com/api/v4/verses/by_page/{page}"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger("quran_bot")
 
 REQUEST_TIMEOUT_SECONDS = 15
@@ -174,13 +134,7 @@ MAX_RANGE_PAGES = 20
 PAGES_PER_GRID_SCREEN = 20
 GRID_COLUMNS = 5
 SURAHS_PER_PAGE = 15
-
 AUDIO_DOWNLOAD_CONCURRENCY = 8
-MAX_AUDIO_SIZE_BYTES = 45 * 1024 * 1024
-
-# ============================================================================
-# التخزين المؤقت على القرص
-# ============================================================================
 
 CACHE_DIR = Path("bot_cache")
 PAGE_IMAGES_DIR = CACHE_DIR / "pages"
@@ -190,16 +144,14 @@ PAGE_FILE_ID_CACHE_PATH = CACHE_DIR / "page_file_ids.json"
 for _d in (CACHE_DIR, PAGE_IMAGES_DIR, AUDIO_FILES_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
-
 def _load_page_file_id_cache() -> dict[int, str]:
     if PAGE_FILE_ID_CACHE_PATH.exists():
         try:
             raw = json.loads(PAGE_FILE_ID_CACHE_PATH.read_text(encoding="utf-8"))
             return {int(k): v for k, v in raw.items()}
         except Exception:
-            logger.warning("تعذرت قراءة كاش الصور من القرص، بدء كاش فارغ.")
+            pass
     return {}
-
 
 def save_page_file_id_cache() -> None:
     try:
@@ -208,51 +160,22 @@ def save_page_file_id_cache() -> None:
             encoding="utf-8",
         )
     except Exception:
-        logger.exception("فشل حفظ كاش الصور على القرص")
-
-
-def page_image_disk_path(page: int) -> Path:
-    return PAGE_IMAGES_DIR / f"{page}.jpg"
-
-
-def audio_disk_path(reciter_key: str, surah_num: int, ayah_num: int) -> Path:
-    reciter_dir = AUDIO_FILES_DIR / reciter_key
-    reciter_dir.mkdir(parents=True, exist_ok=True)
-    return reciter_dir / f"{surah_num:03d}{ayah_num:03d}.mp3"
-
+        pass
 
 PAGE_CACHE: dict[int, str] = _load_page_file_id_cache()
 AUDIO_CACHE: dict[tuple[str, int, int], bytes] = {}
-MAX_CACHE_ITEMS = 1000
-
-# ============================================================================
-# بيانات لوحة تحكم الأمن (متابعة المستخدمين)
-# ============================================================================
-
-SECURITY_USERS_PER_PAGE = 8
-MAX_MESSAGES_PER_USER_PER_DAY = 50
 
 BOT_USERS: dict[int, dict] = {}
 DAILY_ACTIVITY: dict[str, dict[int, list[dict]]] = {}
 
-
 def is_owner(user_id: Optional[int]) -> bool:
     return bool(OWNER_ID) and user_id == OWNER_ID
-
-
-def format_user_display_name(record: dict) -> str:
-    full_name = " ".join(
-        part for part in [record.get("first_name"), record.get("last_name")] if part
-    ).strip()
-    return full_name or "بدون اسم"
-
 
 router = Router()
 
 # ============================================================================
-# قائمة السور
+# قائمة السور الـ 114 بالكامل
 # ============================================================================
-
 SURAHS = [
     {"key": "1", "name": "الفاتحة", "number": 1, "start_page": 1, "end_page": 1},
     {"key": "2", "name": "البقرة", "number": 2, "start_page": 2, "end_page": 49},
@@ -290,7 +213,7 @@ SURAHS = [
     {"key": "34", "name": "سبأ", "number": 34, "start_page": 428, "end_page": 434},
     {"key": "35", "name": "فاطر", "number": 35, "start_page": 434, "end_page": 440},
     {"key": "36", "name": "يس", "number": 36, "start_page": 440, "end_page": 445},
-    {"key": "37", "name": "الصافات", "number": 37, "start_page": 446, "end_page": 452},
+    {"key": "37", "name": "الصافات", "number": 37, "start_page": 445, "end_page": 452},
     {"key": "38", "name": "ص", "number": 38, "start_page": 453, "end_page": 458},
     {"key": "39", "name": "الزمر", "number": 39, "start_page": 458, "end_page": 467},
     {"key": "40", "name": "غافر", "number": 40, "start_page": 467, "end_page": 476},
@@ -331,7 +254,7 @@ SURAHS = [
     {"key": "75", "name": "القيامة", "number": 75, "start_page": 577, "end_page": 578},
     {"key": "76", "name": "الإنسان", "number": 76, "start_page": 578, "end_page": 580},
     {"key": "77", "name": "المرسلات", "number": 77, "start_page": 580, "end_page": 581},
-    {"key": "78", "name": "النبأ", "number": 78, "start_page": 582, "end_page": 583},
+    {"key": "78", "name": "النبأ", "number": 78, "start_page": 582, "end_page": 582},
     {"key": "79", "name": "النازعات", "number": 79, "start_page": 583, "end_page": 584},
     {"key": "80", "name": "عبس", "number": 80, "start_page": 585, "end_page": 585},
     {"key": "81", "name": "التكوير", "number": 81, "start_page": 586, "end_page": 586},
@@ -341,44 +264,41 @@ SURAHS = [
     {"key": "85", "name": "البروج", "number": 85, "start_page": 590, "end_page": 590},
     {"key": "86", "name": "الطارق", "number": 86, "start_page": 591, "end_page": 591},
     {"key": "87", "name": "الأعلى", "number": 87, "start_page": 591, "end_page": 592},
-    {"key": "88", "name": "الغاشية", "number": 88, "start_page": 592, "end_page": 593},
+    {"key": "88", "name": "الغاشية", "number": 88, "start_page": 592, "end_page": 592},
     {"key": "89", "name": "الفجر", "number": 89, "start_page": 593, "end_page": 594},
-    {"key": "90", "name": "البلد", "number": 90, "start_page": 594, "end_page": 595},
+    {"key": "90", "name": "البلد", "number": 90, "start_page": 594, "end_page": 594},
     {"key": "91", "name": "الشمس", "number": 91, "start_page": 595, "end_page": 595},
     {"key": "92", "name": "الليل", "number": 92, "start_page": 595, "end_page": 596},
     {"key": "93", "name": "الضحى", "number": 93, "start_page": 596, "end_page": 596},
-    {"key": "94", "name": "الشرح", "number": 94, "start_page": 596, "end_page": 597},
+    {"key": "94", "name": "الشرح", "number": 94, "start_page": 596, "end_page": 596},
     {"key": "95", "name": "التين", "number": 95, "start_page": 597, "end_page": 597},
-    {"key": "96", "name": "العلق", "number": 96, "start_page": 597, "end_page": 598},
+    {"key": "96", "name": "العلق", "number": 96, "start_page": 597, "end_page": 597},
     {"key": "97", "name": "القدر", "number": 97, "start_page": 598, "end_page": 598},
     {"key": "98", "name": "البينة", "number": 98, "start_page": 598, "end_page": 599},
     {"key": "99", "name": "الزلزلة", "number": 99, "start_page": 599, "end_page": 599},
     {"key": "100", "name": "العاديات", "number": 100, "start_page": 599, "end_page": 600},
     {"key": "101", "name": "القارعة", "number": 101, "start_page": 600, "end_page": 600},
-    {"key": "102", "name": "التكاثر", "number": 102, "start_page": 600, "end_page": 601},
+    {"key": "102", "name": "التكاثر", "number": 102, "start_page": 600, "end_page": 600},
     {"key": "103", "name": "العصر", "number": 103, "start_page": 601, "end_page": 601},
     {"key": "104", "name": "الهمزة", "number": 104, "start_page": 601, "end_page": 601},
-    {"key": "105", "name": "الفيل", "number": 105, "start_page": 601, "end_page": 602},
+    {"key": "105", "name": "الفيل", "number": 105, "start_page": 601, "end_page": 601},
     {"key": "106", "name": "قريش", "number": 106, "start_page": 602, "end_page": 602},
     {"key": "107", "name": "الماعون", "number": 107, "start_page": 602, "end_page": 602},
-    {"key": "108", "name": "الكوثر", "number": 108, "start_page": 602, "end_page": 603},
+    {"key": "108", "name": "الكوثر", "number": 108, "start_page": 602, "end_page": 602},
     {"key": "109", "name": "الكافرون", "number": 109, "start_page": 603, "end_page": 603},
     {"key": "110", "name": "النصر", "number": 110, "start_page": 603, "end_page": 603},
-    {"key": "111", "name": "المسد", "number": 111, "start_page": 603, "end_page": 604},
+    {"key": "111", "name": "المسد", "number": 111, "start_page": 603, "end_page": 603},
     {"key": "112", "name": "الإخلاص", "number": 112, "start_page": 604, "end_page": 604},
     {"key": "113", "name": "الفلق", "number": 113, "start_page": 604, "end_page": 604},
     {"key": "114", "name": "الناس", "number": 114, "start_page": 604, "end_page": 604},
 ]
-
 SURAHS_DICT = {s["key"]: s for s in SURAHS}
-
 
 class QuranStates(StatesGroup):
     waiting_for_range = State()
-
+    waiting_for_city = State()
 
 http_session: Optional[aiohttp.ClientSession] = None
-
 
 class UserTrackingMiddleware(BaseMiddleware):
     async def __call__(
@@ -394,11 +314,7 @@ class UserTrackingMiddleware(BaseMiddleware):
 
             record = BOT_USERS.get(user.id)
             if record is None:
-                record = {
-                    "user_id": user.id,
-                    "first_seen": now,
-                    "message_count": 0,
-                }
+                record = {"user_id": user.id, "first_seen": now, "message_count": 0}
                 BOT_USERS[user.id] = record
 
             record["username"] = user.username
@@ -409,22 +325,12 @@ class UserTrackingMiddleware(BaseMiddleware):
 
             day_bucket = DAILY_ACTIVITY.setdefault(today_key, {})
             user_log = day_bucket.setdefault(user.id, [])
-            preview = (event.text or event.caption or "📎 ملف / وسائط").strip()
+            preview = (event.text or event.caption or "📎 وسائط").strip()
             user_log.append({"time": now, "text": preview})
-            if len(user_log) > MAX_MESSAGES_PER_USER_PER_DAY:
-                del user_log[: len(user_log) - MAX_MESSAGES_PER_USER_PER_DAY]
 
         return await handler(event, data)
 
-
-# ============================================================================
-# دالّات التنزيل
-# ============================================================================
-
-
-async def download_bytes(
-    url: str, timeout_seconds: int = REQUEST_TIMEOUT_SECONDS
-) -> Optional[bytes]:
+async def download_bytes(url: str, timeout_seconds: int = REQUEST_TIMEOUT_SECONDS) -> Optional[bytes]:
     assert http_session is not None
     try:
         timeout = aiohttp.ClientTimeout(total=timeout_seconds)
@@ -432,13 +338,10 @@ async def download_bytes(
             if resp.status == 200:
                 return await resp.read()
     except Exception as e:
-        logger.warning("خطأ اتصال أثناء تحميل %s: %s", url, e)
+        logger.warning("خطأ أثناء التحميل: %s", e)
     return None
 
-
-async def download_bytes_with_retry(
-    url: str, retries: int = 3
-) -> Optional[bytes]:
+async def download_bytes_with_retry(url: str, retries: int = 3) -> Optional[bytes]:
     for attempt in range(1, retries + 1):
         data = await download_bytes(url)
         if data is not None:
@@ -446,65 +349,47 @@ async def download_bytes_with_retry(
         await asyncio.sleep(0.4 * attempt)
     return None
 
-
 async def fetch_page_jpg(page: int) -> Optional[bytes]:
-    disk_path = page_image_disk_path(page)
+    disk_path = PAGE_IMAGES_DIR / f"{page}.jpg"
     if disk_path.exists():
         try:
             return disk_path.read_bytes()
         except Exception:
-            logger.warning("تعذرت قراءة صورة الصفحة من القرص: %s", disk_path)
+            pass
 
     image_url = PAGE_IMAGE_URL_TEMPLATE.format(page=page)
-    data = await download_bytes_with_retry(image_url, retries=6)
+    data = await download_bytes_with_retry(image_url, retries=5)
     if data:
         try:
             disk_path.write_bytes(data)
         except Exception:
-            logger.warning("تعذر حفظ صورة الصفحة على القرص: %s", disk_path)
+            pass
     return data
 
-
-async def fetch_pages_as_media_group(
-    pages: list[int],
-) -> list[tuple[int, InputMediaPhoto]]:
+async def fetch_pages_as_media_group(pages: list[int]) -> list[tuple[int, InputMediaPhoto]]:
     semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
 
     async def process(page: int) -> Optional[tuple[int, InputMediaPhoto]]:
         caption_text = f"<b>صفحة {page}</b> {EMOJI_CAPTION_HTML}"
         if page in PAGE_CACHE:
-            return page, InputMediaPhoto(
-                media=PAGE_CACHE[page],
-                caption=caption_text,
-                parse_mode=ParseMode.HTML,
-            )
+            return page, InputMediaPhoto(media=PAGE_CACHE[page], caption=caption_text, parse_mode=ParseMode.HTML)
 
         async with semaphore:
             jpg = await fetch_page_jpg(page)
             if jpg is None:
                 return None
             file = BufferedInputFile(jpg, filename=f"page_{page}.jpg")
-            return page, InputMediaPhoto(
-                media=file, caption=caption_text, parse_mode=ParseMode.HTML
-            )
+            return page, InputMediaPhoto(media=file, caption=caption_text, parse_mode=ParseMode.HTML)
 
     results = await asyncio.gather(*(process(p) for p in pages))
     return [item for item in results if item]
-
 
 def chunk_list(items: list, size: int):
     for i in range(0, len(items), size):
         yield items[i : i + size]
 
-
-# ============================================================================
-# جلب الآيات وبناء التلاوة
-# ============================================================================
-
-
 async def get_page_ayahs(page: int) -> list[tuple[int, int]]:
     if page == 1:
-        # إصلاح سورة الفاتحة: التأكد من إرجاع جميع آياتها السبع
         return [(1, a) for a in range(1, 8)]
 
     assert http_session is not None
@@ -526,7 +411,6 @@ async def get_page_ayahs(page: int) -> list[tuple[int, int]]:
             result.append((int(s), int(a)))
     return result
 
-
 async def build_pages_audio(pages: list[int], reciter: dict) -> Optional[bytes]:
     pages_ayahs = await asyncio.gather(*(get_page_ayahs(p) for p in pages))
     all_ayahs = []
@@ -545,7 +429,6 @@ async def build_pages_audio(pages: list[int], reciter: dict) -> Optional[bytes]:
 
     reciter_key = reciter["key"]
     reciter_audio_url = reciter["audio_url"]
-
     semaphore = asyncio.Semaphore(AUDIO_DOWNLOAD_CONCURRENCY)
 
     async def fetch_ayah(surah_num: int, ayah_num: int) -> Optional[bytes]:
@@ -553,157 +436,106 @@ async def build_pages_audio(pages: list[int], reciter: dict) -> Optional[bytes]:
         if key in AUDIO_CACHE:
             return AUDIO_CACHE[key]
 
-        disk_path = audio_disk_path(reciter_key, surah_num, ayah_num)
+        disk_path = AUDIO_FILES_DIR / reciter_key / f"{surah_num:03d}{ayah_num:03d}.mp3"
         if disk_path.exists():
             try:
                 data = disk_path.read_bytes()
-                if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
-                    AUDIO_CACHE.clear()
                 AUDIO_CACHE[key] = data
                 return data
             except Exception:
-                logger.warning("تعذرت قراءة الصوت من القرص: %s", disk_path)
+                pass
 
         async with semaphore:
             url = f"{reciter_audio_url}/{surah_num:03d}{ayah_num:03d}.mp3"
             data = await download_bytes_with_retry(url)
             if data:
-                if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
-                    AUDIO_CACHE.clear()
                 AUDIO_CACHE[key] = data
                 try:
+                    disk_path.parent.mkdir(parents=True, exist_ok=True)
                     disk_path.write_bytes(data)
                 except Exception:
-                    logger.warning("تعذر حفظ الصوت على القرص: %s", disk_path)
+                    pass
             return data
 
     results = await asyncio.gather(*(fetch_ayah(s, a) for s, a in unique_ayahs))
     audio_chunks = [chunk for chunk in results if chunk]
+    return b"".join(audio_chunks) if audio_chunks else None
 
-    if not audio_chunks:
-        return None
-
-    return b"".join(audio_chunks)
-
-
-async def deliver_audio_result(
-    answer_target,
-    surah: dict,
-    combined_audio: Optional[bytes],
-    title_suffix: str,
-    reciter: dict,
-    waiting_msg: Optional[Message] = None,
-):
+async def deliver_audio_result(answer_target, surah: dict, combined_audio: Optional[bytes], title_suffix: str, reciter: dict, waiting_msg: Optional[Message] = None):
     if not combined_audio:
         if waiting_msg:
-            try:
-                await waiting_msg.delete()
-            except Exception:
-                pass
-        await answer_target.answer("⚠️ تعذر تجميع المقطع الصوتي لهذه الصفحة.")
-        return
-
-    if len(combined_audio) > MAX_AUDIO_SIZE_BYTES:
-        if waiting_msg:
-            try:
-                await waiting_msg.delete()
-            except Exception:
-                pass
-        await answer_target.answer(
-            "⚠️ حجم الملف الصوتي كبير جداً وتجاوز حد التليجرام."
-        )
+            try: await waiting_msg.delete()
+            except Exception: pass
+        await answer_target.answer("⚠️ تعذر تجميع المقطع الصوتي.")
         return
 
     try:
-        audio_file = BufferedInputFile(
-            combined_audio, filename=f"{surah['name']}_{title_suffix}.mp3"
-        )
+        audio_file = BufferedInputFile(combined_audio, filename=f"{surah['name']}_{title_suffix}.mp3")
         caption_text = f"القارئ : <b>{reciter['name']}</b> {EMOJI_RECITER_HTML}"
-
-        await answer_target.answer_audio(
-            audio=audio_file, caption=caption_text, parse_mode=ParseMode.HTML
-        )
+        await answer_target.answer_audio(audio=audio_file, caption=caption_text, parse_mode=ParseMode.HTML)
     except Exception:
         logger.exception("فشل إرسال ملف الصوت")
     finally:
         if waiting_msg:
-            try:
-                await waiting_msg.delete()
-            except Exception:
-                pass
+            try: await waiting_msg.delete()
+            except Exception: pass
 
-
-# ============================================================================
-# لوحات المفاتيح
-# ============================================================================
-
-
-def build_home_menu() -> InlineKeyboardMarkup:
+def build_home_menu(user_id: Optional[int]) -> InlineKeyboardMarkup:
+    theme = USER_THEME.get(user_id, "light")
+    theme_btn_text = "🌙 الوضع الليلي" if theme == "light" else "☀️ الوضع النهاري"
+    
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="أختر القارئ",
-                    callback_data="open_reciter_section",
-                    style="danger",
-                    icon_custom_emoji_id=ID_RECITER_EMOJI,
-                ),
-                InlineKeyboardButton(
-                    text="القرآن الكريم",
-                    callback_data="open_quran_section",
-                    style="danger",
-                    icon_custom_emoji_id=ID_MAIN_SECTION,
-                ),
+                InlineKeyboardButton(text="القرآن الكريم 📖", callback_data="open_quran_section"),
+                InlineKeyboardButton(text="أختر القارئ 🎙", callback_data="open_reciter_section"),
             ],
             [
-                InlineKeyboardButton(
-                    text="لوحة الأدمن",
-                    callback_data="security_panel",
-                    style="danger",
-                    icon_custom_emoji_id=ID_SECURITY_PANEL,
-                )
+                InlineKeyboardButton(text="📿 الأذكار والتسبيح", callback_data="open_azkar_section"),
+                InlineKeyboardButton(text="🕌 مواقيت الصلاة والقبلة", callback_data="open_prayer_section"),
             ],
             [
-                InlineKeyboardButton(
-                    text="آقتراحات لـ تطوير البوت",
-                    url=f"https://t.me/{DEVELOPER_USERNAME}",
-                    icon_custom_emoji_id=ID_SUGGESTIONS_ICON,
-                )
+                InlineKeyboardButton(text=theme_btn_text, callback_data="toggle_theme"),
+                InlineKeyboardButton(text="لوحة الأدمن 🛡️", callback_data="security_panel"),
+            ],
+            [
+                InlineKeyboardButton(text="آقتراحات لـ تطوير البوت", url=f"https://t.me/{DEVELOPER_USERNAME}")
             ],
         ]
     )
 
+def build_azkar_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="☀️ أذكار الصباح", callback_data="azkar:sabah:0")],
+            [InlineKeyboardButton(text="🌙 أذكار المساء", callback_data="azkar:mosa:0")],
+            [InlineKeyboardButton(text="😴 أذكار النوم", callback_data="azkar:sleep:0")],
+            [InlineKeyboardButton(text="القائمة الرئيسية 🏠", callback_data="back_to_home")],
+        ]
+    )
+
+def build_azkar_item_menu(type_key: str, index: int, count: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=f"🔢 باقي {count} مرة (اضغط للتكرار)", callback_data=f"azkar_click:{type_key}:{index}:{count}")],
+            [InlineKeyboardButton(text="الذكر التالي ➡️", callback_data=f"azkar:{type_key}:{index + 1}")],
+            [InlineKeyboardButton(text="رجوع للأذكار 📿", callback_data="open_azkar_section")]
+        ]
+    )
 
 def build_reciter_menu(user_id: Optional[int]) -> InlineKeyboardMarkup:
     selected_key = USER_RECITER.get(user_id, DEFAULT_RECITER_KEY)
-
     rows = []
     for reciter in RECITERS:
         is_selected = reciter["key"] == selected_key
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text=reciter["name"],
-                    callback_data=f"select_reciter:{reciter['key']}",
-                    style="success" if is_selected else "primary",
-                    icon_custom_emoji_id=(
-                        ID_RECITER_SELECTED_EMOJI if is_selected else ID_RECITER_EMOJI
-                    ),
-                )
-            ]
-        )
-
-    rows.append(
-        [
+        rows.append([
             InlineKeyboardButton(
-                text="القائمة الرئيسية",
-                callback_data="back_to_home",
-                icon_custom_emoji_id=ID_MAIN_HOME,
+                text=f"{'✅ ' if is_selected else ''}{reciter['name']}",
+                callback_data=f"select_reciter:{reciter['key']}"
             )
-        ]
-    )
+        ])
+    rows.append([InlineKeyboardButton(text="القائمة الرئيسية 🏠", callback_data="back_to_home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
 
 def build_surah_list_menu(page: int = 0) -> InlineKeyboardMarkup:
     start_idx = page * SURAHS_PER_PAGE
@@ -713,90 +545,31 @@ def build_surah_list_menu(page: int = 0) -> InlineKeyboardMarkup:
     rows = []
     row = []
     for idx, surah in enumerate(current_surahs):
-        col_num = idx % 2
-        button_style = "primary" if col_num == 0 else "success"
-
-        btn = InlineKeyboardButton(
-            text=f"سورة {surah['name']}",
-            callback_data=f"surah:{surah['key']}",
-            style=button_style,
-            icon_custom_emoji_id=ID_SURAH_ICON,
-        )
+        btn = InlineKeyboardButton(text=f"سورة {surah['name']}", callback_data=f"surah:{surah['key']}")
         row.append(btn)
         if len(row) == 2:
             rows.append(row)
             row = []
-    if row:
-        rows.append(row)
+    if row: rows.append(row)
 
     nav_row = []
     if page > 0:
-        nav_row.append(
-            InlineKeyboardButton(
-                text=INVISIBLE_SPACE,
-                callback_data=f"surah_page:{page - 1}",
-                style="danger",
-                icon_custom_emoji_id=ID_NAV_PREV,
-                style_type="large",
-            )
-        )
+        nav_row.append(InlineKeyboardButton(text="السابق ◀️", callback_data=f"surah_page:{page - 1}"))
     if end_idx < len(SURAHS):
-        nav_row.append(
-            InlineKeyboardButton(
-                text=INVISIBLE_SPACE,
-                callback_data=f"surah_page:{page + 1}",
-                style="danger",
-                icon_custom_emoji_id=ID_NAV_NEXT,
-                style_type="large",
-            )
-        )
+        nav_row.append(InlineKeyboardButton(text="التالي ▶️", callback_data=f"surah_page:{page + 1}"))
+    if nav_row: rows.append(nav_row)
 
-    if nav_row:
-        rows.append(nav_row)
-
-    rows.append(
-        [
-            InlineKeyboardButton(
-                text="القائمة الرئيسية",
-                callback_data="back_to_home",
-                icon_custom_emoji_id=ID_MAIN_HOME,
-            )
-        ]
-    )
-
+    rows.append([InlineKeyboardButton(text="القائمة الرئيسية 🏠", callback_data="back_to_home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
 
 def build_surah_mode_menu(surah_key: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="أختيار صفحة واحدة",
-                    callback_data=f"grid:{surah_key}:0",
-                    style="success",
-                    icon_custom_emoji_id=ID_MODE_BTN,
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="أختيار أكثر من صفحة",
-                    callback_data=f"range:{surah_key}",
-                    style="success",
-                    icon_custom_emoji_id=ID_MODE_BTN,
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="رجوع",
-                    callback_data="surah_page:0",
-                    style="danger",
-                    icon_custom_emoji_id=ID_MAIN_HOME,
-                )
-            ],
+            [InlineKeyboardButton(text="أختيار صفحة واحدة 📄", callback_data=f"grid:{surah_key}:0")],
+            [InlineKeyboardButton(text="أختيار أكثر من صفحة 📚", callback_data=f"range:{surah_key}")],
+            [InlineKeyboardButton(text="رجوع 🔙", callback_data="surah_page:0")],
         ]
     )
-
 
 def build_page_grid(surah_key: str, offset: int) -> InlineKeyboardMarkup:
     surah = SURAHS_DICT[surah_key]
@@ -806,179 +579,40 @@ def build_page_grid(surah_key: str, offset: int) -> InlineKeyboardMarkup:
     rows = []
     row = []
     for page in screen_pages:
-        row.append(
-            InlineKeyboardButton(
-                text=str(page),
-                callback_data=f"pg:{surah_key}:{page}",
-                style="primary",
-            )
-        )
+        row.append(InlineKeyboardButton(text=str(page), callback_data=f"pg:{surah_key}:{page}"))
         if len(row) == GRID_COLUMNS:
             rows.append(row)
             row = []
-    if row:
-        rows.append(row)
+    if row: rows.append(row)
 
     nav_row = []
     if offset > 0:
         prev_offset = max(0, offset - PAGES_PER_GRID_SCREEN)
-        nav_row.append(
-            InlineKeyboardButton(
-                text=INVISIBLE_SPACE,
-                callback_data=f"grid:{surah_key}:{prev_offset}",
-                style="danger",
-                icon_custom_emoji_id=ID_NAV_PREV,
-                style_type="large",
-            )
-        )
+        nav_row.append(InlineKeyboardButton(text="السابق ◀️", callback_data=f"grid:{surah_key}:{prev_offset}"))
     if offset + PAGES_PER_GRID_SCREEN < len(all_pages):
         next_offset = offset + PAGES_PER_GRID_SCREEN
-        nav_row.append(
-            InlineKeyboardButton(
-                text=INVISIBLE_SPACE,
-                callback_data=f"grid:{surah_key}:{next_offset}",
-                style="danger",
-                icon_custom_emoji_id=ID_NAV_NEXT,
-                style_type="large",
-            )
-        )
-    if nav_row:
-        rows.append(nav_row)
+        nav_row.append(InlineKeyboardButton(text="التالي ▶️", callback_data=f"grid:{surah_key}:{next_offset}"))
+    if nav_row: rows.append(nav_row)
 
-    rows.append(
-        [
-            InlineKeyboardButton(
-                text="رجوع",
-                callback_data=f"surah:{surah_key}",
-                style="danger",
-                icon_custom_emoji_id=ID_MAIN_HOME,
-            )
-        ]
-    )
+    rows.append([InlineKeyboardButton(text="رجوع 🔙", callback_data=f"surah:{surah_key}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
 
 def build_security_panel_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=f"👥 كل المشاركين ({len(BOT_USERS)})",
-                    callback_data="sec_all:0",
-                    style="danger",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔥 المتفاعلين اليوم",
-                    callback_data="sec_today:0",
-                    style="danger",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="القائمة الرئيسية",
-                    callback_data="back_to_home",
-                    icon_custom_emoji_id=ID_MAIN_HOME,
-                )
-            ],
+            [InlineKeyboardButton(text=f"👥 كل المشاركين ({len(BOT_USERS)})", callback_data="sec_all:0")],
+            [InlineKeyboardButton(text="القائمة الرئيسية 🏠", callback_data="back_to_home")],
         ]
     )
-
-
-def _security_user_button_label(record: dict) -> str:
-    name = format_user_display_name(record)
-    username = record.get("username")
-    label = f"{name}"
-    if username:
-        label += f" (@{username})"
-    return label[:60]
-
-
-def build_security_users_list(
-    user_ids: list[int], page: int, list_kind: str
-) -> InlineKeyboardMarkup:
-    start_idx = page * SECURITY_USERS_PER_PAGE
-    end_idx = start_idx + SECURITY_USERS_PER_PAGE
-    page_ids = user_ids[start_idx:end_idx]
-
-    rows = []
-    for uid in page_ids:
-        record = BOT_USERS.get(uid, {"user_id": uid})
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text=_security_user_button_label(record),
-                    callback_data=f"sec_user:{list_kind}:{page}:{uid}",
-                    style="primary",
-                )
-            ]
-        )
-
-    nav_row = []
-    if page > 0:
-        nav_row.append(
-            InlineKeyboardButton(
-                text=INVISIBLE_SPACE,
-                callback_data=f"sec_{list_kind}:{page - 1}",
-                style="danger",
-                icon_custom_emoji_id=ID_NAV_PREV,
-                style_type="large",
-            )
-        )
-    if end_idx < len(user_ids):
-        nav_row.append(
-            InlineKeyboardButton(
-                text=INVISIBLE_SPACE,
-                callback_data=f"sec_{list_kind}:{page + 1}",
-                style="danger",
-                icon_custom_emoji_id=ID_NAV_NEXT,
-                style_type="large",
-            )
-        )
-    if nav_row:
-        rows.append(nav_row)
-
-    rows.append(
-        [
-            InlineKeyboardButton(
-                text="رجوع",
-                callback_data="security_panel",
-                style="danger",
-                icon_custom_emoji_id=ID_MAIN_HOME,
-            )
-        ]
-    )
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def build_security_user_back_menu(list_kind: str, page: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="رجوع للقائمة",
-                    callback_data=f"sec_{list_kind}:{page}",
-                    style="danger",
-                    icon_custom_emoji_id=ID_MAIN_HOME,
-                )
-            ]
-        ]
-    )
-
-
-# ============================================================================
-# المعالجات (Handlers)
-# ============================================================================
-
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        HOME_TEXT, reply_markup=build_home_menu(), parse_mode=ParseMode.HTML
+        get_home_text(message.from_user.id),
+        reply_markup=build_home_menu(message.from_user.id),
+        parse_mode=ParseMode.HTML
     )
-
 
 @router.callback_query(F.data == "back_to_home")
 async def on_back_to_home(callback: CallbackQuery, state: FSMContext):
@@ -986,37 +620,120 @@ async def on_back_to_home(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     try:
         await callback.message.edit_text(
-            HOME_TEXT, reply_markup=build_home_menu(), parse_mode=ParseMode.HTML
+            get_home_text(callback.from_user.id),
+            reply_markup=build_home_menu(callback.from_user.id),
+            parse_mode=ParseMode.HTML
         )
     except TelegramAPIError:
         pass
 
+@router.callback_query(F.data == "toggle_theme")
+async def on_toggle_theme(callback: CallbackQuery):
+    current = USER_THEME.get(callback.from_user.id, "light")
+    USER_THEME[callback.from_user.id] = "dark" if current == "light" else "light"
+    await callback.answer("تم تغيير ثيم الواجهة!")
+    try:
+        await callback.message.edit_text(
+            get_home_text(callback.from_user.id),
+            reply_markup=build_home_menu(callback.from_user.id),
+            parse_mode=ParseMode.HTML
+        )
+    except TelegramAPIError:
+        pass
+
+@router.callback_query(F.data == "open_azkar_section")
+async def on_open_azkar(callback: CallbackQuery):
+    await callback.answer()
+    text = "<b>قسم الأذكار والتسبيح اليومي</b> 📿\n\nأختر الأذكار المطلوبة:"
+    await callback.message.edit_text(text, reply_markup=build_azkar_menu(), parse_mode=ParseMode.HTML)
+
+@router.callback_query(F.data.startswith("azkar:"))
+async def on_show_azkar_item(callback: CallbackQuery):
+    _, type_key, index_str = callback.data.split(":")
+    index = int(index_str)
+    items = AZKAR_DATA.get(type_key, [])
+
+    if index >= len(items):
+        await callback.answer("✨ أتممت هذه الأذكار بنجاح، تقبل الله!", show_alert=True)
+        await callback.message.edit_text("<b>قسم الأذكار والتسبيح اليومي</b> 📿", reply_markup=build_azkar_menu(), parse_mode=ParseMode.HTML)
+        return
+
+    await callback.answer()
+    item = items[index]
+    text = f"<b>الذكر ({index + 1}/{len(items)}):</b>\n\n« {item['text']} »"
+    await callback.message.edit_text(text, reply_markup=build_azkar_item_menu(type_key, index, item["count"]), parse_mode=ParseMode.HTML)
+
+@router.callback_query(F.data.startswith("azkar_click:"))
+async def on_azkar_click(callback: CallbackQuery):
+    _, type_key, index_str, count_str = callback.data.split(":")
+    index, count = int(index_str), int(count_str) - 1
+
+    if count <= 0:
+        await callback.answer("أحسنت! انتقل للذكر التالي.")
+        items = AZKAR_DATA.get(type_key, [])
+        next_index = index + 1
+        if next_index >= len(items):
+            await callback.message.edit_text("✨ أتممت هذه الأذكار بنجاح، تقبل الله!", reply_markup=build_azkar_menu(), parse_mode=ParseMode.HTML)
+        else:
+            item = items[next_index]
+            text = f"<b>الذكر ({next_index + 1}/{len(items)}):</b>\n\n« {item['text']} »"
+            await callback.message.edit_text(text, reply_markup=build_azkar_item_menu(type_key, next_index, item["count"]), parse_mode=ParseMode.HTML)
+    else:
+        await callback.answer(f"متبقي {count} مرة")
+        items = AZKAR_DATA.get(type_key, [])
+        item = items[index]
+        text = f"<b>الذكر ({index + 1}/{len(items)}):</b>\n\n« {item['text']} »"
+        await callback.message.edit_text(text, reply_markup=build_azkar_item_menu(type_key, index, count), parse_mode=ParseMode.HTML)
+
+@router.callback_query(F.data == "open_prayer_section")
+async def on_open_prayer(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(QuranStates.waiting_for_city)
+    text = "<b>🕌 مواقيت الصلاة والقبلة</b>\n\nأرسل اسم مدينتك الآن بالإنجليزية (مثال: <code>Baghdad</code> أو <code>Cairo</code>):"
+    await callback.message.answer(text, parse_mode=ParseMode.HTML)
+
+@router.message(QuranStates.waiting_for_city, F.text)
+async def handle_city_input(message: Message, state: FSMContext):
+    city = message.text.strip()
+    await state.clear()
+    
+    url = f"https://api.aladhan.com/v1/timingsByCity?city={city}&country=&method=4"
+    data = await download_bytes(url)
+    if not data:
+        await message.answer("⚠️ تعذر جلب مواقيت الصلاة لهذه المدينة. تأكد من كتابة الاسم بالإنجليزية.")
+        return
+
+    try:
+        json_data = json.loads(data.decode("utf-8"))
+        timings = json_data["data"]["timings"]
+        text = (
+            f"<b>🕌 مواقيت الصلاة لمدينة ({city.capitalize()}):</b>\n\n"
+            f"• الفجر: <code>{timings['Fajr']}</code>\n"
+            f"• الشروق: <code>{timings['Sunrise']}</code>\n"
+            f"• الظهر: <code>{timings['Dhuhr']}</code>\n"
+            f"• العصر: <code>{timings['Asr']}</code>\n"
+            f"• المغرب: <code>{timings['Maghrib']}</code>\n"
+            f"• العشاء: <code>{timings['Isha']}</code>\n"
+        )
+        await message.answer(text, parse_mode=ParseMode.HTML)
+    except Exception:
+        await message.answer("⚠️ حدث خطأ أثناء معالجة البيانات.")
 
 @router.callback_query(F.data == "open_quran_section")
 async def on_open_quran_section(callback: CallbackQuery):
     await callback.answer()
     try:
-        await callback.message.edit_text(
-            QURAN_HEADER_TEXT,
-            reply_markup=build_surah_list_menu(0),
-            parse_mode=ParseMode.HTML,
-        )
+        await callback.message.edit_text(QURAN_HEADER_TEXT, reply_markup=build_surah_list_menu(0), parse_mode=ParseMode.HTML)
     except TelegramAPIError:
         pass
-
 
 @router.callback_query(F.data == "open_reciter_section")
 async def on_open_reciter_section(callback: CallbackQuery):
     await callback.answer()
     try:
-        await callback.message.edit_text(
-            RECITER_HEADER_TEXT,
-            reply_markup=build_reciter_menu(callback.from_user.id),
-            parse_mode=ParseMode.HTML,
-        )
+        await callback.message.edit_text(RECITER_HEADER_TEXT, reply_markup=build_reciter_menu(callback.from_user.id), parse_mode=ParseMode.HTML)
     except TelegramAPIError:
         pass
-
 
 @router.callback_query(F.data.startswith("select_reciter:"))
 async def on_select_reciter(callback: CallbackQuery):
@@ -1027,30 +744,20 @@ async def on_select_reciter(callback: CallbackQuery):
         return
 
     USER_RECITER[callback.from_user.id] = reciter_key
-    await callback.answer(f"تم أختيار القارئ: {reciter['name']}")
+    await callback.answer(f"تم اختيار القارئ: {reciter['name']}")
     try:
-        await callback.message.edit_text(
-            RECITER_HEADER_TEXT,
-            reply_markup=build_reciter_menu(callback.from_user.id),
-            parse_mode=ParseMode.HTML,
-        )
+        await callback.message.edit_text(RECITER_HEADER_TEXT, reply_markup=build_reciter_menu(callback.from_user.id), parse_mode=ParseMode.HTML)
     except TelegramAPIError:
         pass
-
 
 @router.callback_query(F.data.startswith("surah_page:"))
 async def on_surah_page_change(callback: CallbackQuery):
     page = int(callback.data.split(":")[1])
     await callback.answer()
     try:
-        await callback.message.edit_text(
-            QURAN_HEADER_TEXT,
-            reply_markup=build_surah_list_menu(page),
-            parse_mode=ParseMode.HTML,
-        )
+        await callback.message.edit_text(QURAN_HEADER_TEXT, reply_markup=build_surah_list_menu(page), parse_mode=ParseMode.HTML)
     except TelegramAPIError:
         pass
-
 
 @router.callback_query(F.data.startswith("surah:"))
 async def on_surah_selected(callback: CallbackQuery, state: FSMContext):
@@ -1061,20 +768,11 @@ async def on_surah_selected(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
 
-    text = (
-        f"أخترت سورة <b>{surah['name']}</b> {EMOJI_SURAH_CHOSEN}\n"
-        f"أختر الطريقة المناسبة <b>للعرض</b> {EMOJI_SELECT_MODE}"
-    )
-
+    text = f"أخترت سورة <b>{surah['name']}</b> {EMOJI_SURAH_CHOSEN}\nأختر الطريقة المناسبة <b>للعرض</b> {EMOJI_SELECT_MODE}"
     try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=build_surah_mode_menu(key),
-            parse_mode=ParseMode.HTML,
-        )
+        await callback.message.edit_text(text, reply_markup=build_surah_mode_menu(key), parse_mode=ParseMode.HTML)
     except TelegramAPIError:
         pass
-
 
 @router.callback_query(F.data.startswith("grid:"))
 async def on_grid_requested(callback: CallbackQuery):
@@ -1086,16 +784,10 @@ async def on_grid_requested(callback: CallbackQuery):
     await callback.answer()
 
     text = f"<b>{surah['name']}</b> - أختر صفحة {EMOJI_GRID_TITLE}"
-
     try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=build_page_grid(surah_key, offset),
-            parse_mode=ParseMode.HTML,
-        )
+        await callback.message.edit_text(text, reply_markup=build_page_grid(surah_key, offset), parse_mode=ParseMode.HTML)
     except TelegramAPIError:
         pass
-
 
 @router.callback_query(F.data.startswith("pg:"))
 async def on_single_page_selected(callback: CallbackQuery):
@@ -1107,48 +799,25 @@ async def on_single_page_selected(callback: CallbackQuery):
     audio_task = asyncio.create_task(build_pages_audio([page], reciter))
     caption_text = f"<b>صفحة {page}</b> {EMOJI_CAPTION_HTML}"
 
-    img_waiting_msg = await callback.message.answer(
-        f"<b>جارِ</b> تحميل <b>صورة الصفحة</b> {EMOJI_WAITING_HTML}",
-        parse_mode=ParseMode.HTML,
-    )
+    img_waiting_msg = await callback.message.answer(f"<b>جارِ</b> تحميل <b>صورة الصفحة</b> {EMOJI_WAITING_HTML}", parse_mode=ParseMode.HTML)
 
     if page in PAGE_CACHE:
-        await callback.message.answer_photo(
-            photo=PAGE_CACHE[page],
-            caption=caption_text,
-            parse_mode=ParseMode.HTML,
-        )
+        await callback.message.answer_photo(photo=PAGE_CACHE[page], caption=caption_text, parse_mode=ParseMode.HTML)
     else:
         jpg = await fetch_page_jpg(page)
         if jpg:
             photo = BufferedInputFile(jpg, filename=f"page_{page}.jpg")
-            sent = await callback.message.answer_photo(
-                photo=photo, caption=caption_text, parse_mode=ParseMode.HTML
-            )
+            sent = await callback.message.answer_photo(photo=photo, caption=caption_text, parse_mode=ParseMode.HTML)
             if sent.photo:
                 PAGE_CACHE[page] = sent.photo[-1].file_id
                 save_page_file_id_cache()
 
-    try:
-        await img_waiting_msg.delete()
-    except Exception:
-        pass
+    try: await img_waiting_msg.delete()
+    except Exception: pass
 
-    audio_waiting_msg = await callback.message.answer(
-        f"<b>جارِ</b> تجهيز <b>المقطع الصوتي</b> {EMOJI_WAITING_HTML}",
-        parse_mode=ParseMode.HTML,
-    )
-
+    audio_waiting_msg = await callback.message.answer(f"<b>جارِ</b> تجهيز <b>المقطع الصوتي</b> {EMOJI_WAITING_HTML}", parse_mode=ParseMode.HTML)
     combined_audio = await audio_task
-    await deliver_audio_result(
-        callback.message,
-        surah,
-        combined_audio,
-        f"صفحة_{page}",
-        reciter,
-        waiting_msg=audio_waiting_msg,
-    )
-
+    await deliver_audio_result(callback.message, surah, combined_audio, f"صفحة_{page}", reciter, waiting_msg=audio_waiting_msg)
 
 @router.callback_query(F.data.startswith("range:"))
 async def on_range_requested(callback: CallbackQuery, state: FSMContext):
@@ -1165,51 +834,33 @@ async def on_range_requested(callback: CallbackQuery, state: FSMContext):
         f"{EMOJI_ALERT} <b>تنبيه</b> الحد المسموح <b><u>20</u></b> صفحة وأقل.\n"
         f"{EMOJI_ALERT} <b>أرسل</b> <u>النطاق المطلوب</u> هكذا (مثال: <code>5-8</code>):"
     )
-
     await callback.message.answer(prompt_text, parse_mode=ParseMode.HTML)
-
 
 @router.message(QuranStates.waiting_for_range, F.text)
 async def handle_page_range(message: Message, state: FSMContext):
     text = (message.text or "").strip()
     match = re.match(r"^(\d{1,3})\s*-\s*(\d{1,3})$", text)
     if not match:
-        await message.answer(
-            "⚠️ صيغة غير صحيحة. أرسل النطاق هكذا: <code>5-8</code>"
-        )
+        await message.answer("⚠️ صيغة غير صحيحة. أرسل النطاق هكذا: <code>5-8</code>")
         return
 
     start_page, end_page = int(match.group(1)), int(match.group(2))
     data = await state.get_data()
     surah = SURAHS_DICT.get(data.get("surah_key"))
 
-    if (
-        not surah
-        or start_page > end_page
-        or start_page < surah["start_page"]
-        or end_page > surah["end_page"]
-    ):
-        await message.answer(
-            "⚠️ النطاق مدخل بشكل غير صحيح أو خارج صفحات السورة."
-        )
+    if not surah or start_page > end_page or start_page < surah["start_page"] or end_page > surah["end_page"]:
+        await message.answer("⚠️ النطاق مدخل بشكل غير صحيح أو خارج صفحات السورة.")
         return
 
     if (end_page - start_page + 1) > MAX_RANGE_PAGES:
-        await message.answer(
-            f"{EMOJI_ALERT} عذراً، لا يمكن اختيار أكثر من 20 صفحة في المرة"
-            " الواحدة."
-        )
+        await message.answer(f"{EMOJI_ALERT} عذراً، لا يمكن اختيار أكثر من 20 صفحة في المرة الواحدة.")
         return
 
     pages = list(range(start_page, end_page + 1))
     reciter = get_user_reciter(message.from_user.id)
     audio_task = asyncio.create_task(build_pages_audio(pages, reciter))
 
-    img_waiting_msg = await message.answer(
-        f"<b>جارِ</b> تحميل <b>صور الصفحات</b> {EMOJI_WAITING_HTML}",
-        parse_mode=ParseMode.HTML,
-    )
-
+    img_waiting_msg = await message.answer(f"<b>جارِ</b> تحميل <b>صور الصفحات</b> {EMOJI_WAITING_HTML}", parse_mode=ParseMode.HTML)
     media_data = await fetch_pages_as_media_group(pages)
     newly_cached = False
 
@@ -1222,30 +873,15 @@ async def handle_page_range(message: Message, state: FSMContext):
                 PAGE_CACHE[p_num] = msg.photo[-1].file_id
                 newly_cached = True
 
-    if newly_cached:
-        save_page_file_id_cache()
+    if newly_cached: save_page_file_id_cache()
 
-    try:
-        await img_waiting_msg.delete()
-    except Exception:
-        pass
+    try: await img_waiting_msg.delete()
+    except Exception: pass
 
-    audio_waiting_msg = await message.answer(
-        f"<b>جارِ</b> تجهيز <b>المقطع الصوتي</b> {EMOJI_WAITING_HTML}",
-        parse_mode=ParseMode.HTML,
-    )
-
+    audio_waiting_msg = await message.answer(f"<b>جارِ</b> تجهيز <b>المقطع الصوتي</b> {EMOJI_WAITING_HTML}", parse_mode=ParseMode.HTML)
     combined_audio = await audio_task
-    await deliver_audio_result(
-        message,
-        surah,
-        combined_audio,
-        f"صفحات_{start_page}-{end_page}",
-        reciter,
-        waiting_msg=audio_waiting_msg,
-    )
+    await deliver_audio_result(message, surah, combined_audio, f"صفحات_{start_page}-{end_page}", reciter, waiting_msg=audio_waiting_msg)
     await state.clear()
-
 
 @router.callback_query(F.data == "security_panel")
 async def on_security_panel(callback: CallbackQuery):
@@ -1259,133 +895,24 @@ async def on_security_panel(callback: CallbackQuery):
         "أختر أحد الخيارات:"
     )
     try:
-        await callback.message.edit_text(
-            text, reply_markup=build_security_panel_menu(), parse_mode=ParseMode.HTML
-        )
+        await callback.message.edit_text(text, reply_markup=build_security_panel_menu(), parse_mode=ParseMode.HTML)
     except TelegramAPIError:
         pass
 
-
-@router.callback_query(F.data.startswith("sec_all:"))
-async def on_sec_all_users(callback: CallbackQuery):
-    if not is_owner(callback.from_user.id):
-        await callback.answer("⚠️ هذه اللوحة مخصصة لمالك البوت فقط.", show_alert=True)
-        return
-    page = int(callback.data.split(":")[1])
-    await callback.answer()
-
-    user_ids = sorted(
-        BOT_USERS.keys(), key=lambda uid: BOT_USERS[uid]["last_seen"], reverse=True
-    )
-    text = f"👥 <b>كل المشاركين</b> ({len(user_ids)})\nأختر مستخدماً لعرض تفاصيله:"
-
-    if not user_ids:
-        text = "👥 لا يوجد أي مشاركين مسجّلين بعد."
-
-    try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=build_security_users_list(user_ids, page, "all"),
-            parse_mode=ParseMode.HTML,
-        )
-    except TelegramAPIError:
-        pass
-
-
-@router.callback_query(F.data.startswith("sec_today:"))
-async def on_sec_today_users(callback: CallbackQuery):
-    if not is_owner(callback.from_user.id):
-        await callback.answer("⚠️ هذه اللوحة مخصصة لمالك البوت فقط.", show_alert=True)
-        return
-    page = int(callback.data.split(":")[1])
-    await callback.answer()
-
-    today_key = datetime.now().strftime("%Y-%m-%d")
-    today_bucket = DAILY_ACTIVITY.get(today_key, {})
-    user_ids = sorted(
-        today_bucket.keys(),
-        key=lambda uid: today_bucket[uid][-1]["time"],
-        reverse=True,
-    )
-    text = f"🔥 <b>المتفاعلين اليوم</b> ({len(user_ids)})\nأختر مستخدماً لعرض رسائله:"
-
-    if not user_ids:
-        text = "🔥 لا يوجد أي تفاعل اليوم حتى الآن."
-
-    try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=build_security_users_list(user_ids, page, "today"),
-            parse_mode=ParseMode.HTML,
-        )
-    except TelegramAPIError:
-        pass
-
-
-@router.callback_query(F.data.startswith("sec_user:"))
-async def on_sec_user_details(callback: CallbackQuery):
-    if not is_owner(callback.from_user.id):
-        await callback.answer("⚠️ هذه اللوحة مخصصة لمالك البوت فقط.", show_alert=True)
-        return
-    _, list_kind, page_str, uid_str = callback.data.split(":")
-    page = int(page_str)
-    uid = int(uid_str)
-    await callback.answer()
-
-    record = BOT_USERS.get(uid)
-    if not record:
-        await callback.message.answer("⚠️ لا توجد بيانات لهذا المستخدم.")
-        return
-
-    name = format_user_display_name(record)
-    username = record.get("username")
-    username_line = f"@{username}" if username else "بدون يوزر"
-
-    lines = [
-        "<b>بيانات المستخدم</b> 🛡️",
-        f"الاسم: <b>{name}</b>",
-        f"اليوزر: <b>{username_line}</b>",
-        f"الآيدي: <code>{uid}</code>",
-        f"أول ظهور: <code>{record['first_seen'].strftime('%Y-%m-%d %H:%M')}</code>",
-        f"آخر ظهور: <code>{record['last_seen'].strftime('%Y-%m-%d %H:%M')}</code>",
-        f"عدد الرسائل الكلي: <b>{record.get('message_count', 0)}</b>",
-    ]
-
-    if list_kind == "today":
-        today_key = datetime.now().strftime("%Y-%m-%d")
-        today_messages = DAILY_ACTIVITY.get(today_key, {}).get(uid, [])
-        lines.append("")
-        lines.append(f"<b>رسائل اليوم ({len(today_messages)}):</b>")
-        for entry in today_messages[-20:]:
-            time_str = entry["time"].strftime("%H:%M")
-            safe_text = entry["text"].replace("<", "‹").replace(">", "›")
-            if len(safe_text) > 150:
-                safe_text = safe_text[:150] + "…"
-            lines.append(f"• <code>{time_str}</code> — {safe_text}")
-
-    text = "\n".join(lines)
-    try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=build_security_user_back_menu(list_kind, page),
-            parse_mode=ParseMode.HTML,
-        )
-    except TelegramAPIError:
-        pass
-
+def get_user_reciter(user_id: Optional[int]) -> dict:
+    reciter_key = USER_RECITER.get(user_id, DEFAULT_RECITER_KEY)
+    return RECITERS_DICT.get(reciter_key, RECITERS[0])
 
 async def main():
     await start_dummy_server()
     global http_session
-    bot = Bot(
-        token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
+    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
     dp.message.middleware(UserTrackingMiddleware())
     dp.include_router(router)
 
     http_session = aiohttp.ClientSession()
-    logger.info("🚀 تم تشغيل البوت بنجاح...")
+    logger.info("🚀 تم تشغيل البوت بنجاح مع كافة السور الـ 114...")
     try:
         await dp.start_polling(bot)
     finally:
@@ -1393,7 +920,5 @@ async def main():
             await http_session.close()
         await bot.session.close()
 
-
 if __name__ == "__main__":
     asyncio.run(main())
-
