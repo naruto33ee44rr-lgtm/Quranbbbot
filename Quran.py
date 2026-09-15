@@ -59,16 +59,16 @@ OWNER_ID = 1317171223
 INVISIBLE_SPACE = "\u200b"
 
 # معرفات الإيموجيات المخصصة (Custom Emoji IDs)
-ID_WELCOME_EMOJI = "5355194215129169036"  # إيموجي أهلاً / أختيار السورة والنمط
-ID_BOT_OWNER_EMOJI = "6158862632926319619"  # إيموجي Bot Owner
-ID_DEV_USERNAME_EMOJI = "6269163801178804220"  # إيموجي اليوزر
-ID_RECITER_EMOJI = "6071346841704733378"  # إيموجي القارئ
-ID_RECITER_SELECTED_EMOJI = "6269163801178804220"  # إيموجي تم أختيار القارئ
-ID_NAV_NEXT = "5291842193382730408"  # التالي
-ID_NAV_PREV = "5291993277447301940"  # السابق
-ID_MODE_BTN = "5355082606109013423"  # إيموجي أزرار الاختيار
-ID_WAITING = "5355226302829835543"  # إيموجي الانتظار
-ID_FUTURE_SECTION = "5355295550587549286"  # إيموجي الأقسام المستقبلية
+ID_WELCOME_EMOJI = "5355194215129169036"
+ID_BOT_OWNER_EMOJI = "6158862632926319619"
+ID_DEV_USERNAME_EMOJI = "6269163801178804220"
+ID_RECITER_EMOJI = "6071346841704733378"
+ID_RECITER_SELECTED_EMOJI = "6269163801178804220"
+ID_NAV_NEXT = "5291842193382730408"
+ID_NAV_PREV = "5291993277447301940"
+ID_MODE_BTN = "5355082606109013423"
+ID_WAITING = "5355226302829835543"
+ID_FUTURE_SECTION = "5355295550587549286"
 
 ID_MAIN_SECTION = "6071207281037417686"
 ID_SURAH_ICON = "6077896035470942395"
@@ -102,32 +102,32 @@ EMOJI_ALERT = f'<tg-emoji emoji-id="{ID_ALERT}">⚠️</tg-emoji>'
 EMOJI_CAPTION_HTML = f'<tg-emoji emoji-id="{ID_PAGE_CAPTION}">📖</tg-emoji>'
 EMOJI_SECURITY_PANEL = f'<tg-emoji emoji-id="{ID_SECURITY_PANEL}">🛡️</tg-emoji>'
 
-# قائمة القرّاء المتاحين للأختيار
+# قائمة القرّاء المتاحين ومعرفات السيرفرات المباشرة لتشغيل السور كاملة
 RECITERS = [
     {
         "key": "dussary",
         "name": "د. ياسر الدوسري",
-        "audio_url": "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps",
+        "server_url": "https://server11.mp3quran.net/yasser",
     },
     {
         "key": "minshawi",
         "name": "محمد صديق المنشاوي",
-        "audio_url": "https://everyayah.com/data/Minshawy_Murattal_128kbps",
+        "server_url": "https://server10.mp3quran.net/minsh",
     },
     {
         "key": "abdul_basit",
         "name": "عبد الباسط عبد الصمد",
-        "audio_url": "https://everyayah.com/data/Abdul_Basit_Murattal_192kbps",
+        "server_url": "https://server7.mp3quran.net/basit",
     },
     {
         "key": "sudais",
         "name": "عبد الرحمن السديس",
-        "audio_url": "https://everyayah.com/data/Abdurrahmaan_As-Sudais_192kbps",
+        "server_url": "https://server11.mp3quran.net/sds",
     },
     {
         "key": "shuraym",
         "name": "سعود الشريم",
-        "audio_url": "https://everyayah.com/data/Saood_ash-Shuraym_128kbps",
+        "server_url": "https://server7.mp3quran.net/shur",
     },
 ]
 RECITERS_DICT = {r["key"]: r for r in RECITERS}
@@ -154,7 +154,6 @@ HOME_TEXT = (
 )
 
 PAGE_IMAGE_URL_TEMPLATE = "https://raw.githubusercontent.com/QuranHub/quran-pages-images/main/kfgqpc/hafs-wasat/{page}.jpg"
-QURAN_COM_PAGE_VERSES_API_URL = "https://api.quran.com/api/v4/verses/by_page/{page}"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -170,19 +169,15 @@ PAGES_PER_GRID_SCREEN = 20
 GRID_COLUMNS = 5
 SURAHS_PER_PAGE = 15
 
-AUDIO_DOWNLOAD_CONCURRENCY = 8
-MAX_AUDIO_SIZE_BYTES = 45 * 1024 * 1024
-
 # ============================================================================
 # التخزين المؤقت على القرص
 # ============================================================================
 
 CACHE_DIR = Path("bot_cache")
 PAGE_IMAGES_DIR = CACHE_DIR / "pages"
-AUDIO_FILES_DIR = CACHE_DIR / "audio"
 PAGE_FILE_ID_CACHE_PATH = CACHE_DIR / "page_file_ids.json"
 
-for _d in (CACHE_DIR, PAGE_IMAGES_DIR, AUDIO_FILES_DIR):
+for _d in (CACHE_DIR, PAGE_IMAGES_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 
@@ -210,18 +205,10 @@ def page_image_disk_path(page: int) -> Path:
     return PAGE_IMAGES_DIR / f"{page}.jpg"
 
 
-def audio_disk_path(reciter_key: str, surah_num: int, ayah_num: int) -> Path:
-    reciter_dir = AUDIO_FILES_DIR / reciter_key
-    reciter_dir.mkdir(parents=True, exist_ok=True)
-    return reciter_dir / f"{surah_num:03d}{ayah_num:03d}.mp3"
-
-
 PAGE_CACHE: dict[int, str] = _load_page_file_id_cache()
-AUDIO_CACHE: dict[tuple[str, int, int], bytes] = {}
-MAX_CACHE_ITEMS = 1000
 
 # ============================================================================
-# بيانات لوحة تحكم الأمن (متابعة المستخدمين)
+# بيانات لوحة تحكم الأمن
 # ============================================================================
 
 SECURITY_USERS_PER_PAGE = 8
@@ -493,132 +480,26 @@ def chunk_list(items: list, size: int):
 
 
 # ============================================================================
-# جلب الآيات وبناء التلاوة
+# إرسال تلاوة السورة كاملة
 # ============================================================================
 
-
-async def get_page_ayahs(page: int) -> list[tuple[int, int]]:
-    if page == 1:
-        return [(1, a) for a in range(1, 8)]
-
-    assert http_session is not None
-    url = f"{QURAN_COM_PAGE_VERSES_API_URL.format(page=page)}?per_page=50"
-    try:
-        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SECONDS)
-        async with http_session.get(url, timeout=timeout) as resp:
-            if resp.status != 200:
-                return []
-            payload = await resp.json()
-    except Exception:
-        return []
-
-    result = []
-    for verse in payload.get("verses", []):
-        verse_key = verse.get("verse_key", "")
-        if ":" in verse_key:
-            s, a = verse_key.split(":")
-            result.append((int(s), int(a)))
-    return result
-
-
-async def build_pages_audio(pages: list[int], reciter: dict) -> Optional[bytes]:
-    pages_ayahs = await asyncio.gather(*(get_page_ayahs(p) for p in pages))
-    all_ayahs = []
-    for page_ayahs in pages_ayahs:
-        all_ayahs.extend(page_ayahs)
-
-    seen = set()
-    unique_ayahs = []
-    for surah_num, ayah_num in all_ayahs:
-        if (surah_num, ayah_num) not in seen:
-            seen.add((surah_num, ayah_num))
-            unique_ayahs.append((surah_num, ayah_num))
-
-    if not unique_ayahs:
-        return None
-
-    reciter_key = reciter["key"]
-    reciter_audio_url = reciter["audio_url"]
-
-    semaphore = asyncio.Semaphore(AUDIO_DOWNLOAD_CONCURRENCY)
-
-    async def fetch_ayah(surah_num: int, ayah_num: int) -> Optional[bytes]:
-        key = (reciter_key, surah_num, ayah_num)
-        if key in AUDIO_CACHE:
-            return AUDIO_CACHE[key]
-
-        disk_path = audio_disk_path(reciter_key, surah_num, ayah_num)
-        if disk_path.exists():
-            try:
-                data = disk_path.read_bytes()
-                if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
-                    AUDIO_CACHE.clear()
-                AUDIO_CACHE[key] = data
-                return data
-            except Exception:
-                logger.warning("تعذرت قراءة الصوت من القرص: %s", disk_path)
-
-        async with semaphore:
-            url = f"{reciter_audio_url}/{surah_num:03d}{ayah_num:03d}.mp3"
-            data = await download_bytes_with_retry(url)
-            if data:
-                if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
-                    AUDIO_CACHE.clear()
-                AUDIO_CACHE[key] = data
-                try:
-                    disk_path.write_bytes(data)
-                except Exception:
-                    logger.warning("تعذر حفظ الصوت على القرص: %s", disk_path)
-            return data
-
-    results = await asyncio.gather(*(fetch_ayah(s, a) for s, a in unique_ayahs))
-    audio_chunks = [chunk for chunk in results if chunk]
-
-    if not audio_chunks:
-        return None
-
-    return b"".join(audio_chunks)
-
-
-async def deliver_audio_result(
+async def send_full_surah_audio(
     answer_target,
     surah: dict,
-    combined_audio: Optional[bytes],
-    title_suffix: str,
     reciter: dict,
     waiting_msg: Optional[Message] = None,
 ):
-    if not combined_audio:
-        if waiting_msg:
-            try:
-                await waiting_msg.delete()
-            except Exception:
-                pass
-        await answer_target.answer("⚠️ تعذر تجميع المقطع الصوتي لهذه الصفحة.")
-        return
-
-    if len(combined_audio) > MAX_AUDIO_SIZE_BYTES:
-        if waiting_msg:
-            try:
-                await waiting_msg.delete()
-            except Exception:
-                pass
-        await answer_target.answer(
-            "⚠️ حجم الملف الصوتي كبير جداً وتجاوز حد التليجرام."
-        )
-        return
+    surah_num_str = str(surah['number']).zfill(3)
+    audio_url = f"{reciter['server_url']}/{surah_num_str}.mp3"
+    caption_text = f"📖 <b>سورة {surah['name']} كاملة</b>\n🎙 القارئ : <b>{reciter['name']}</b> {EMOJI_RECITER_HTML}"
 
     try:
-        audio_file = BufferedInputFile(
-            combined_audio, filename=f"{surah['name']}_{title_suffix}.mp3"
-        )
-        caption_text = f"القارئ : <b>{reciter['name']}</b> {EMOJI_RECITER_HTML}"
-
         await answer_target.answer_audio(
-            audio=audio_file, caption=caption_text, parse_mode=ParseMode.HTML
+            audio=audio_url, caption=caption_text, parse_mode=ParseMode.HTML
         )
     except Exception:
         logger.exception("فشل إرسال ملف الصوت")
+        await answer_target.answer("⚠️ تعذر تحميل السورة، حاول مرة أخرى لاحقاً.")
     finally:
         if waiting_msg:
             try:
@@ -1098,7 +979,6 @@ async def on_single_page_selected(callback: CallbackQuery):
     surah = SURAHS_DICT.get(surah_key)
     reciter = get_user_reciter(callback.from_user.id)
 
-    audio_task = asyncio.create_task(build_pages_audio([page], reciter))
     caption_text = f"<b>صفحة {page}</b> {EMOJI_CAPTION_HTML}"
 
     img_waiting_msg = await callback.message.answer(
@@ -1129,16 +1009,13 @@ async def on_single_page_selected(callback: CallbackQuery):
         pass
 
     audio_waiting_msg = await callback.message.answer(
-        f"<b>جارِ</b> تجهيز <b>المقطع الصوتي</b> {EMOJI_WAITING_HTML}",
+        f"<b>جارِ</b> تجهيز <b>المقطع الصوتي للسورة كاملة</b> {EMOJI_WAITING_HTML}",
         parse_mode=ParseMode.HTML,
     )
 
-    combined_audio = await audio_task
-    await deliver_audio_result(
+    await send_full_surah_audio(
         callback.message,
         surah,
-        combined_audio,
-        f"صفحة_{page}",
         reciter,
         waiting_msg=audio_waiting_msg,
     )
@@ -1197,7 +1074,6 @@ async def handle_page_range(message: Message, state: FSMContext):
 
     pages = list(range(start_page, end_page + 1))
     reciter = get_user_reciter(message.from_user.id)
-    audio_task = asyncio.create_task(build_pages_audio(pages, reciter))
 
     img_waiting_msg = await message.answer(
         f"<b>جارِ</b> تحميل <b>صور الصفحات</b> {EMOJI_WAITING_HTML}",
@@ -1225,16 +1101,13 @@ async def handle_page_range(message: Message, state: FSMContext):
         pass
 
     audio_waiting_msg = await message.answer(
-        f"<b>جارِ</b> تجهيز <b>المقطع الصوتي</b> {EMOJI_WAITING_HTML}",
+        f"<b>جارِ</b> تجهيز <b>المقطع الصوتي للسورة كاملة</b> {EMOJI_WAITING_HTML}",
         parse_mode=ParseMode.HTML,
     )
 
-    combined_audio = await audio_task
-    await deliver_audio_result(
+    await send_full_surah_audio(
         message,
         surah,
-        combined_audio,
-        f"صفحات_{start_page}-{end_page}",
         reciter,
         waiting_msg=audio_waiting_msg,
     )
@@ -1390,3 +1263,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
