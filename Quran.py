@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional
@@ -63,6 +64,7 @@ ID_WELCOME_EMOJI = "5355194215129169036"  # إيموجي أهلاً / أختيا
 ID_BOT_OWNER_EMOJI = "6158862632926319619"  # إيموجي Bot Owner
 ID_DEV_USERNAME_EMOJI = "6269163801178804220"  # إيموجي اليوزر
 ID_RECITER_EMOJI = "6071346841704733378"  # إيموجي القارئ
+ID_RECITER_SELECTED_EMOJI = "6269163801178804220"  # إيموجي تم أختيار القارئ
 ID_NAV_NEXT = "5291842193382730408"  # التالي
 ID_NAV_PREV = "5291993277447301940"  # السابق
 ID_MODE_BTN = "5355082606109013423"  # إيموجي أزرار الاختيار
@@ -85,6 +87,7 @@ EMOJI_WELCOME = f'<tg-emoji emoji-id="{ID_WELCOME_EMOJI}">👋</tg-emoji>'
 EMOJI_BOT_OWNER = f'<tg-emoji emoji-id="{ID_BOT_OWNER_EMOJI}">👑</tg-emoji>'
 EMOJI_DEV_USERNAME = f'<tg-emoji emoji-id="{ID_DEV_USERNAME_EMOJI}">👤</tg-emoji>'
 EMOJI_RECITER_HTML = f'<tg-emoji emoji-id="{ID_RECITER_EMOJI}">🎙</tg-emoji>'
+EMOJI_RECITER_SELECTED_HTML = f'<tg-emoji emoji-id="{ID_RECITER_SELECTED_EMOJI}">✅</tg-emoji>'
 EMOJI_WAITING_HTML = f'<tg-emoji emoji-id="{ID_WAITING}">⏳</tg-emoji>'
 EMOJI_FUTURE_SECTION = f'<tg-emoji emoji-id="{ID_FUTURE_SECTION}">📌</tg-emoji>'
 
@@ -100,12 +103,34 @@ EMOJI_ALERT = f'<tg-emoji emoji-id="{ID_ALERT}">⚠️</tg-emoji>'
 EMOJI_CAPTION_HTML = f'<tg-emoji emoji-id="{ID_PAGE_CAPTION}">📖</tg-emoji>'
 EMOJI_SECURITY_PANEL = f'<tg-emoji emoji-id="{ID_SECURITY_PANEL}">🛡️</tg-emoji>'
 
-# القارئ الافتراضي للبوت
-RECITER_NAME = "د. ياسر الدوسري"
-RECITER_AUDIO_URL = "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps"
+# قائمة القرّاء المتاحين للأختيار
+RECITERS = [
+    {
+        "key": "dussary",
+        "name": "د. ياسر الدوسري",
+        "audio_url": "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps",
+    },
+    {
+        "key": "minshawi",
+        "name": "محمد صديق المنشاوي",
+        "audio_url": "https://everyayah.com/data/Minshawy_Murattal_128kbps",
+    },
+]
+RECITERS_DICT = {r["key"]: r for r in RECITERS}
+DEFAULT_RECITER_KEY = RECITERS[0]["key"]
+
+# القارئ المختار حالياً لكل مستخدم (يبقى القارئ الافتراضي إن لم يختر أحداً)
+USER_RECITER: dict[int, str] = {}
+
+
+def get_user_reciter(user_id: Optional[int]) -> dict:
+    reciter_key = USER_RECITER.get(user_id, DEFAULT_RECITER_KEY)
+    return RECITERS_DICT.get(reciter_key, RECITERS[0])
+
 
 # نص الترويسة لقسم القرآن الكريم
 QURAN_HEADER_TEXT = f'أختر <b>سورة</b> {EMOJI_SELECT_MODE}'
+RECITER_HEADER_TEXT = f'أختر <b>القارئ</b> {EMOJI_RECITER_HTML}'
 
 # نص القائمة الرئيسية
 HOME_TEXT = (
@@ -171,12 +196,14 @@ def page_image_disk_path(page: int) -> Path:
     return PAGE_IMAGES_DIR / f"{page}.jpg"
 
 
-def audio_disk_path(surah_num: int, ayah_num: int) -> Path:
-    return AUDIO_FILES_DIR / f"{surah_num:03d}{ayah_num:03d}.mp3"
+def audio_disk_path(reciter_key: str, surah_num: int, ayah_num: int) -> Path:
+    reciter_dir = AUDIO_FILES_DIR / reciter_key
+    reciter_dir.mkdir(parents=True, exist_ok=True)
+    return reciter_dir / f"{surah_num:03d}{ayah_num:03d}.mp3"
 
 
 PAGE_CACHE: dict[int, str] = _load_page_file_id_cache()
-AUDIO_CACHE: dict[tuple[int, int], bytes] = {}
+AUDIO_CACHE: dict[tuple[str, int, int], bytes] = {}
 MAX_CACHE_ITEMS = 1000
 
 # ============================================================================
@@ -481,7 +508,60 @@ async def get_page_ayahs(page: int) -> list[tuple[int, int]]:
     return result
 
 
-async def build_pages_audio(pages: list[int]) -> Optional[bytes]:
+async def concat_audio_ffmpeg(audio_chunks: list[bytes]) -> Optional[bytes]:
+    """
+    يدمج عدة ملفات MP3 بترتيبها عبر ffmpeg مع إعادة ترميز حقيقية،
+    بدل لصقها كبايتات خام (b"".join) الذي يسبب توقف التشغيل عند
+    نهاية أول ملف (بسبب هيدر Xing/LAME) وتقطيع/كليكات بين المقاطع.
+    """
+    if not audio_chunks:
+        return None
+    if len(audio_chunks) == 1:
+        return audio_chunks[0]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        list_path = os.path.join(tmp, "list.txt")
+        with open(list_path, "w", encoding="utf-8") as f:
+            for i, chunk in enumerate(audio_chunks):
+                part_path = os.path.join(tmp, f"{i}.mp3")
+                with open(part_path, "wb") as pf:
+                    pf.write(chunk)
+                # مسار داخل ffmpeg concat list، الهروب من الفواصل العليا فقط
+                safe_path = part_path.replace("'", "'\\''")
+                f.write(f"file '{safe_path}'\n")
+
+        out_path = os.path.join(tmp, "out.mp3")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg",
+                "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", list_path,
+                "-c:a", "libmp3lame",
+                "-b:a", "128k",
+                out_path,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.communicate()
+        except FileNotFoundError:
+            logger.exception("ffmpeg غير مثبت على السيرفر، تعذر دمج الصوت.")
+            return None
+        except Exception:
+            logger.exception("فشل تشغيل ffmpeg لدمج المقاطع الصوتية")
+            return None
+
+        if os.path.exists(out_path):
+            try:
+                with open(out_path, "rb") as f:
+                    return f.read()
+            except Exception:
+                logger.exception("تعذرت قراءة ملف الصوت المدمج")
+    return None
+
+
+async def build_pages_audio(pages: list[int], reciter: dict) -> Optional[bytes]:
     pages_ayahs = await asyncio.gather(*(get_page_ayahs(p) for p in pages))
     all_ayahs = []
     for page_ayahs in pages_ayahs:
@@ -497,14 +577,17 @@ async def build_pages_audio(pages: list[int]) -> Optional[bytes]:
     if not unique_ayahs:
         return None
 
+    reciter_key = reciter["key"]
+    reciter_audio_url = reciter["audio_url"]
+
     semaphore = asyncio.Semaphore(AUDIO_DOWNLOAD_CONCURRENCY)
 
     async def fetch_ayah(surah_num: int, ayah_num: int) -> Optional[bytes]:
-        key = (surah_num, ayah_num)
+        key = (reciter_key, surah_num, ayah_num)
         if key in AUDIO_CACHE:
             return AUDIO_CACHE[key]
 
-        disk_path = audio_disk_path(surah_num, ayah_num)
+        disk_path = audio_disk_path(reciter_key, surah_num, ayah_num)
         if disk_path.exists():
             try:
                 data = disk_path.read_bytes()
@@ -516,7 +599,7 @@ async def build_pages_audio(pages: list[int]) -> Optional[bytes]:
                 logger.warning("تعذرت قراءة الصوت من القرص: %s", disk_path)
 
         async with semaphore:
-            url = f"{RECITER_AUDIO_URL}/{surah_num:03d}{ayah_num:03d}.mp3"
+            url = f"{reciter_audio_url}/{surah_num:03d}{ayah_num:03d}.mp3"
             data = await download_bytes_with_retry(url)
             if data:
                 if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
@@ -534,7 +617,7 @@ async def build_pages_audio(pages: list[int]) -> Optional[bytes]:
     if not audio_chunks:
         return None
 
-    return b"".join(audio_chunks)
+    return await concat_audio_ffmpeg(audio_chunks)
 
 
 async def deliver_audio_result(
@@ -542,6 +625,7 @@ async def deliver_audio_result(
     surah: dict,
     combined_audio: Optional[bytes],
     title_suffix: str,
+    reciter: dict,
     waiting_msg: Optional[Message] = None,
 ):
     if not combined_audio:
@@ -568,7 +652,7 @@ async def deliver_audio_result(
         audio_file = BufferedInputFile(
             combined_audio, filename=f"{surah['name']}_{title_suffix}.mp3"
         )
-        caption_text = f"القارئ : <b>{RECITER_NAME}</b> {EMOJI_RECITER_HTML}"
+        caption_text = f"القارئ : <b>{reciter['name']}</b> {EMOJI_RECITER_HTML}"
 
         await answer_target.answer_audio(
             audio=audio_file, caption=caption_text, parse_mode=ParseMode.HTML
@@ -598,6 +682,12 @@ def build_home_menu() -> InlineKeyboardMarkup:
                     style="danger",
                     icon_custom_emoji_id=ID_MAIN_SECTION,
                 ),
+                InlineKeyboardButton(
+                    text="أختر القارئ",
+                    callback_data="open_reciter_section",
+                    style="danger",
+                    icon_custom_emoji_id=ID_RECITER_EMOJI,
+                ),
             ],
             [
                 InlineKeyboardButton(
@@ -616,6 +706,37 @@ def build_home_menu() -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+def build_reciter_menu(user_id: Optional[int]) -> InlineKeyboardMarkup:
+    selected_key = USER_RECITER.get(user_id, DEFAULT_RECITER_KEY)
+
+    rows = []
+    for reciter in RECITERS:
+        is_selected = reciter["key"] == selected_key
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=reciter["name"],
+                    callback_data=f"select_reciter:{reciter['key']}",
+                    style="success" if is_selected else "primary",
+                    icon_custom_emoji_id=(
+                        ID_RECITER_SELECTED_EMOJI if is_selected else ID_RECITER_EMOJI
+                    ),
+                )
+            ]
+        )
+
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="القائمة الرئيسية",
+                callback_data="back_to_home",
+                icon_custom_emoji_id=ID_MAIN_HOME,
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def build_surah_list_menu(page: int = 0) -> InlineKeyboardMarkup:
@@ -918,6 +1039,39 @@ async def on_open_quran_section(callback: CallbackQuery):
         pass
 
 
+@router.callback_query(F.data == "open_reciter_section")
+async def on_open_reciter_section(callback: CallbackQuery):
+    await callback.answer()
+    try:
+        await callback.message.edit_text(
+            RECITER_HEADER_TEXT,
+            reply_markup=build_reciter_menu(callback.from_user.id),
+            parse_mode=ParseMode.HTML,
+        )
+    except TelegramAPIError:
+        pass
+
+
+@router.callback_query(F.data.startswith("select_reciter:"))
+async def on_select_reciter(callback: CallbackQuery):
+    reciter_key = callback.data.split(":", 1)[1]
+    reciter = RECITERS_DICT.get(reciter_key)
+    if not reciter:
+        await callback.answer()
+        return
+
+    USER_RECITER[callback.from_user.id] = reciter_key
+    await callback.answer(f"تم أختيار القارئ: {reciter['name']}")
+    try:
+        await callback.message.edit_text(
+            RECITER_HEADER_TEXT,
+            reply_markup=build_reciter_menu(callback.from_user.id),
+            parse_mode=ParseMode.HTML,
+        )
+    except TelegramAPIError:
+        pass
+
+
 @router.callback_query(F.data.startswith("surah_page:"))
 async def on_surah_page_change(callback: CallbackQuery):
     page = int(callback.data.split(":")[1])
@@ -982,8 +1136,9 @@ async def on_single_page_selected(callback: CallbackQuery):
     _, surah_key, page_str = callback.data.split(":")
     page = int(page_str)
     surah = SURAHS_DICT.get(surah_key)
+    reciter = get_user_reciter(callback.from_user.id)
 
-    audio_task = asyncio.create_task(build_pages_audio([page]))
+    audio_task = asyncio.create_task(build_pages_audio([page], reciter))
     caption_text = f"<b>صفحة {page}</b> {EMOJI_CAPTION_HTML}"
 
     img_waiting_msg = await callback.message.answer(
@@ -1024,6 +1179,7 @@ async def on_single_page_selected(callback: CallbackQuery):
         surah,
         combined_audio,
         f"صفحة_{page}",
+        reciter,
         waiting_msg=audio_waiting_msg,
     )
 
@@ -1080,7 +1236,8 @@ async def handle_page_range(message: Message, state: FSMContext):
         return
 
     pages = list(range(start_page, end_page + 1))
-    audio_task = asyncio.create_task(build_pages_audio(pages))
+    reciter = get_user_reciter(message.from_user.id)
+    audio_task = asyncio.create_task(build_pages_audio(pages, reciter))
 
     img_waiting_msg = await message.answer(
         f"<b>جارِ</b> تحميل <b>صور الصفحات</b> {EMOJI_WAITING_HTML}",
@@ -1118,6 +1275,7 @@ async def handle_page_range(message: Message, state: FSMContext):
         surah,
         combined_audio,
         f"صفحات_{start_page}-{end_page}",
+        reciter,
         waiting_msg=audio_waiting_msg,
     )
     await state.clear()
