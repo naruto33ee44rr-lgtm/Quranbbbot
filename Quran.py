@@ -102,7 +102,7 @@ EMOJI_ALERT = f'<tg-emoji emoji-id="{ID_ALERT}">⚠️</tg-emoji>'
 EMOJI_CAPTION_HTML = f'<tg-emoji emoji-id="{ID_PAGE_CAPTION}">📖</tg-emoji>'
 EMOJI_SECURITY_PANEL = f'<tg-emoji emoji-id="{ID_SECURITY_PANEL}">🛡️</tg-emoji>'
 
-# قائمة القرّاء المتاحين للأختيار (تم حذف ماهر المعيقلي)
+# قائمة القرّاء المتاحين للأختيار
 RECITERS = [
     {
         "key": "dussary",
@@ -133,7 +133,7 @@ RECITERS = [
 RECITERS_DICT = {r["key"]: r for r in RECITERS}
 DEFAULT_RECITER_KEY = RECITERS[0]["key"]
 
-# القارئ المختار حالياً لكل مستخدم (يبقى القارئ الافتراضي إن لم يختر أحداً)
+# القارئ المختار حالياً لكل مستخدم
 USER_RECITER: dict[int, str] = {}
 
 
@@ -499,7 +499,6 @@ def chunk_list(items: list, size: int):
 
 async def get_page_ayahs(page: int) -> list[tuple[int, int]]:
     if page == 1:
-        # إصلاح سورة الفاتحة: التأكد من إرجاع جميع آياتها السبع دائماً
         return [(1, a) for a in range(1, 8)]
 
     assert http_session is not None
@@ -638,16 +637,16 @@ def build_home_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="أختر القارئ",
-                    callback_data="open_reciter_section",
-                    style="danger",
-                    icon_custom_emoji_id=ID_RECITER_EMOJI,
-                ),
-                InlineKeyboardButton(
                     text="القرآن الكريم",
                     callback_data="open_quran_section",
                     style="danger",
                     icon_custom_emoji_id=ID_MAIN_SECTION,
+                ),
+                InlineKeyboardButton(
+                    text="أختر القارئ",
+                    callback_data="open_reciter_section",
+                    style="danger",
+                    icon_custom_emoji_id=ID_RECITER_EMOJI,
                 ),
             ],
             [
