@@ -51,6 +51,7 @@ async def start_dummy_server():
 
 # التوكن: ضعه في متغير بيئة اسمه BOT_TOKEN على Render (لا تكتبه داخل الملف)
 BOT_TOKEN = "8985243390:AAFwMzMbfit3_0OKb77KvGPOj5ZSBQmzRpU"
+
 DEVELOPER_USERNAME = "mh5_c"
 
 # آيدي المالك (الرقمي) المسموح له بفتح لوحة تحكم الأمن.
@@ -1419,10 +1420,8 @@ AYAH_COUNTS = [
     5, 4, 5, 6,
 ]
 
-MAX_TAFSIR_PAGES = 3          # أقصى عدد صفحات في الطلب الواحد
-MAX_TAFSIR_AYAHS = 15         # أقصى عدد آيات في الطلب الواحد
-TAFSIR_MESSAGE_LIMIT = 3800   # حد الرسالة الواحدة (تيليجرام 4096)
-TAFSIR_PART_LIMIT = 2800      # أقصى طول لجزء التفسير في الرسالة الواحدة (قبل التنسيق)
+MAX_TAFSIR_PAGES = 5          # أقصى عدد صفحات في الطلب الواحد
+MAX_TAFSIR_AYAHS = 30         # أقصى عدد آيات في الطلب الواحد
 TAFSIR_PARAGRAPH_SIZE = 320   # طول الفقرة التقريبي لسهولة القراءة
 TAFSIR_PARAGRAPH_MAX = 900    # أقصى طول لفقرة واحدة
 TAFSIR_LOOKBACK_AYAHS = 10    # للكتب التي تجمع عدة آيات في تفسير واحد
@@ -1604,46 +1603,33 @@ def tafsir_paragraphs(text: str) -> list[str]:
     return result
 
 
-# كلمة مهمة -> إيموجي الفقرة التي تبدأ بها
-TAFSIR_KEYWORD_EMOJI: dict[str, str] = {}
-for _words, _emoji in [
-    (["قوله تعالى", "قوله جل ثناؤه", "يقول تعالى ذكره", "يقول الله تعالى",
-      "يقول تعالى", "قال الله تعالى", "قال تعالى"], "📖"),
-    (["قال رسول الله", "عن رسول الله", "قال النبي", "عن النبي", "الحديث"], "📜"),
-    (["والمعنى", "المعنى", "أي:", "يعني"], "💡"),
-    (["سبب النزول", "سبب نزول", "نزلت"], "📌"),
-    (["الفوائد", "فوائد", "فائدة"], "🌟"),
-    (["تنبيه"], "⚠️"),
-    (["الأحكام", "أحكام", "المسألة", "مسألة"], "⚖️"),
-    (["اختلف أهل التأويل", "اختلف العلماء", "اختلف أهل العلم"], "🔎"),
-    (["والصواب", "الصواب", "والراجح", "الراجح"], "✅"),
-]:
-    for _w in _words:
-        TAFSIR_KEYWORD_EMOJI[_w] = _emoji
+# ---------------------------------------------------------------------------
+# تنسيق نص التفسير: فقرات قصيرة + تمييز الآيات المقتبسة فقط (قراءة مريحة)
+# ---------------------------------------------------------------------------
 
-_AR = "ء-ي"
-_kw_alt = "|".join(
-    re.escape(w) for w in sorted(TAFSIR_KEYWORD_EMOJI, key=len, reverse=True)
-)
-TAFSIR_HIGHLIGHT_RE = re.compile(
-    rf"﴿[^﴾]{{1,500}}﴾|(?<![{_AR}])(?:{_kw_alt})(?![{_AR}])"
-)
+TAFSIR_PAGE_SIZE = 900   # عدد الحروف في الجزء الواحد داخل الرسالة
+_TAFSIR_QUOTE_RE = re.compile(r"﴿[^﴾]{1,500}﴾")
 
 
 def format_tafsir_paragraph(par: str) -> str:
     escaped = html_lib.escape(par, quote=False)
-    state = {"emoji": None}
+    return _TAFSIR_QUOTE_RE.sub(lambda m: f"<b>{m.group(0)}</b>", escaped)
 
-    def repl(m: "re.Match") -> str:
-        txt = m.group(0)
-        if state["emoji"] is None and m.start() <= 60:
-            state["emoji"] = TAFSIR_KEYWORD_EMOJI.get(
-                txt, "📖" if txt.startswith("﴿") else None
-            )
-        return f"<b>{txt}</b>"
 
-    body = TAFSIR_HIGHLIGHT_RE.sub(repl, escaped)
-    return f"{state['emoji'] or '🔹'} {body}"
+def tafsir_pages(text: str) -> list[str]:
+    """يقسم التفسير الكامل إلى أجزاء قصيرة (بدون حذف أي كلمة)."""
+    pages: list[list[str]] = []
+    cur: list[str] = []
+    size = 0
+    for p in tafsir_paragraphs(text):
+        if cur and size + len(p) > TAFSIR_PAGE_SIZE:
+            pages.append(cur)
+            cur, size = [], 0
+        cur.append(p)
+        size += len(p) + 2
+    if cur:
+        pages.append(cur)
+    return ["\n\n".join(format_tafsir_paragraph(p) for p in pg) for pg in pages] or [""]
 
 
 # ---------------------------------------------------------------------------
@@ -1710,71 +1696,98 @@ async def fetch_surah_ayah_texts(surah_num: int) -> dict[int, str]:
 # ---------------------------------------------------------------------------
 
 
-def tafsir_text_parts(text: str, first_limit: int) -> list[str]:
-    """يقسم التفسير الكامل إلى أجزاء HTML (كل جزء يناسب رسالة تيليجرام)."""
-    parts: list[list[str]] = []
-    cur: list[str] = []
-    size = 0
-    limit = first_limit
-    for p in tafsir_paragraphs(text):
-        if cur and size + len(p) > limit:
-            parts.append(cur)
-            cur, size = [], 0
-            limit = TAFSIR_PART_LIMIT
-        cur.append(p)
-        size += len(p) + 2
-    if cur:
-        parts.append(cur)
-    return ["\n\n".join(format_tafsir_paragraph(p) for p in part) for part in parts] or [""]
+# ---------------------------------------------------------------------------
+# عارض التفسير: رسالة واحدة (آية + تفسيرها) مع أزرار للتنقل بدل إغراق المحادثة
+# ---------------------------------------------------------------------------
 
 
-def build_tafsir_chunks(
-    surah: dict,
-    mufassir: dict,
-    label: str,
-    entries: list[tuple[int, str, str]],
-    ayah_texts: dict[int, str],
-) -> list[str]:
-    head = (
-        f"{EMOJI_TAFSIR} <b>{mufassir['name']}</b>\n"
-        f"🕋 سورة <b>{surah['name']}</b> • {label}"
+def _tf_cb(muf_idx: int, surah_key: str, first: int, last: int, cur: int, part: int) -> str:
+    return f"tf:{muf_idx}:{surah_key}:{first}:{last}:{cur}:{part}"
+
+
+async def build_tafsir_view(
+    surah: dict, mufassir: dict, first: int, last: int, cur: int, part: int
+) -> Optional[tuple[str, InlineKeyboardMarkup]]:
+    texts, ayah_texts = await asyncio.gather(
+        fetch_tafsir_surah(mufassir["slug"], surah["number"]),
+        fetch_surah_ayah_texts(surah["number"]),
     )
-    pieces: list[str] = [head]
-    for n, kind, text in entries:
-        lines = [f"✨ <b>الآية {n}</b>"]
-        ayah = ayah_texts.get(n)
-        ayah_len = 0
-        if ayah:
-            lines.append(f"﴿ <b>{html_lib.escape(ayah, quote=False)}</b> ﴾")
-            ayah_len = len(ayah)
+    if not texts:
+        return None
 
-        if kind == "empty":
-            lines.append(
-                "<blockquote expandable>ℹ️ <i>لا يوجد تفسير لهذه الآية في هذا الكتاب.</i></blockquote>"
+    _, kind, text = _build_entries(texts, [cur])[0]
+    pages = tafsir_pages(text) if kind == "text" else [""]
+    part = max(0, min(part, len(pages) - 1))
+
+    muf_idx = MUFASSIRS.index(mufassir)
+    total = last - first + 1
+    title = f"✨ <b>الآية {cur}</b>"
+    if total > 1:
+        title += f"  <i>({cur - first + 1} من {total})</i>"
+
+    lines = [
+        f"{EMOJI_TAFSIR} <b>{mufassir['name']}</b> • سورة <b>{surah['name']}</b>",
+        "",
+        title,
+    ]
+    ayah = ayah_texts.get(cur)
+    if ayah:
+        lines.append(f"﴿ <b>{html_lib.escape(ayah, quote=False)}</b> ﴾")
+    lines.append("")
+    if kind == "empty":
+        lines.append(
+            "<blockquote expandable><i>لا يوجد تفسير لهذه الآية في هذا الكتاب.</i></blockquote>"
+        )
+    else:
+        lines.append(f"<blockquote expandable>{pages[part]}</blockquote>")
+    if len(pages) > 1:
+        lines.append(f"<i>الجزء {part + 1} من {len(pages)}</i>")
+
+    rows = []
+    part_row = []
+    if part > 0:
+        part_row.append(
+            InlineKeyboardButton(
+                text="الجزء السابق",
+                callback_data=_tf_cb(muf_idx, surah["key"], first, last, cur, part - 1),
+                style="primary",
             )
-            pieces.append("\n".join(lines))
-            continue
-
-        first_limit = max(600, TAFSIR_PART_LIMIT - ayah_len - 100)
-        parts = tafsir_text_parts(text, first_limit)
-        lines.append(f"<blockquote expandable>{parts[0]}</blockquote>")
-        pieces.append("\n".join(lines))
-        for x in parts[1:]:
-            pieces.append(
-                f"✨ <b>تتمة الآية {n}</b>\n<blockquote expandable>{x}</blockquote>"
+        )
+    if part < len(pages) - 1:
+        part_row.append(
+            InlineKeyboardButton(
+                text="الجزء التالي",
+                callback_data=_tf_cb(muf_idx, surah["key"], first, last, cur, part + 1),
+                style="primary",
             )
+        )
+    if part_row:
+        rows.append(part_row)
 
-    chunks: list[str] = []
-    cur = ""
-    for piece in pieces:
-        if cur and len(cur) + len(piece) + 2 > TAFSIR_MESSAGE_LIMIT:
-            chunks.append(cur)
-            cur = piece
-        else:
-            cur = f"{cur}\n\n{piece}" if cur else piece
-    if cur:
-        chunks.append(cur)
-    return chunks
+    ayah_row = []
+    if cur > first:
+        ayah_row.append(
+            InlineKeyboardButton(
+                text="الآية السابقة",
+                callback_data=_tf_cb(muf_idx, surah["key"], first, last, cur - 1, 0),
+                style="success",
+            )
+        )
+    if cur < last:
+        ayah_row.append(
+            InlineKeyboardButton(
+                text="الآية التالية",
+                callback_data=_tf_cb(muf_idx, surah["key"], first, last, cur + 1, 0),
+                style="success",
+            )
+        )
+    if ayah_row:
+        rows.append(ayah_row)
+
+    rows.append(
+        [InlineKeyboardButton(text="إغلاق", callback_data="tf_close", style="danger")]
+    )
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def send_tafsir(
@@ -1793,39 +1806,54 @@ async def send_tafsir(
         f"<b>جارِ</b> تجهيز <b>التفسير</b> {EMOJI_WAITING_HTML}",
         parse_mode=ParseMode.HTML,
     )
-
-    async def _drop_waiting():
+    first, last = min(ayah_nums), max(ayah_nums)
+    try:
+        view = await build_tafsir_view(surah, mufassir, first, last, first, 0)
+        if not view:
+            await message.answer("⚠️ تعذر جلب التفسير حالياً، حاول بعد قليل.")
+            return
+        text, markup = view
+        await message.answer(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    except TelegramAPIError:
+        logger.exception("فشل إرسال التفسير")
+        await message.answer("⚠️ حدث خطأ أثناء إرسال التفسير.")
+    finally:
         try:
             await waiting.delete()
         except Exception:
             pass
 
-    texts, ayah_texts = await asyncio.gather(
-        fetch_tafsir_surah(mufassir["slug"], surah["number"]),
-        fetch_surah_ayah_texts(surah["number"]),
-    )
-    if not texts:
-        await _drop_waiting()
-        await message.answer("⚠️ تعذر جلب التفسير حالياً، حاول بعد قليل.")
-        return
 
-    entries = _build_entries(texts, ayah_nums)
-    chunks = build_tafsir_chunks(surah, mufassir, label, entries, ayah_texts)
-
+@router.callback_query(F.data.startswith("tf:"))
+async def on_tafsir_nav(callback: CallbackQuery):
     try:
-        for chunk in chunks:
-            for attempt in range(3):
-                try:
-                    await message.answer(chunk, parse_mode=ParseMode.HTML)
-                    break
-                except TelegramRetryAfter as e:
-                    await asyncio.sleep(e.retry_after + 1)
-            await asyncio.sleep(0.5)
+        _, mi, skey, first, last, cur, part = callback.data.split(":")
+        mufassir = MUFASSIRS[int(mi)]
+        surah = SURAHS_DICT[skey]
+        first, last, cur, part = int(first), int(last), int(cur), int(part)
+    except Exception:
+        await callback.answer()
+        return
+    await callback.answer()
+    view = await build_tafsir_view(surah, mufassir, first, last, cur, part)
+    if not view:
+        return
+    text, markup = view
+    try:
+        await callback.message.edit_text(
+            text, reply_markup=markup, parse_mode=ParseMode.HTML
+        )
     except TelegramAPIError:
-        logger.exception("فشل إرسال التفسير")
-        await message.answer("⚠️ حدث خطأ أثناء إرسال التفسير.")
-    finally:
-        await _drop_waiting()
+        pass
+
+
+@router.callback_query(F.data == "tf_close")
+async def on_tafsir_close(callback: CallbackQuery):
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
