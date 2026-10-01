@@ -1574,12 +1574,12 @@ def _build_entries(texts: dict[int, str], ayah_nums: list[int]) -> list[tuple[in
 # تنسيق نص التفسير (فقرات + خط عريض للكلمات المهمة + إيموجيات)
 # ---------------------------------------------------------------------------
 
-USER_TAFSIR_MODE: dict[int, str] = {}   # "short" (افتراضي) أو "full"
+USER_TAFSIR_MODE: dict[int, str] = {}   # "full" (افتراضي) أو "short"
 SHORT_TAFSIR_LIMIT = 350                # عدد أحرف التفسير المختصر لكل آية
 
 
 def get_user_tafsir_mode(user_id: Optional[int]) -> str:
-    return USER_TAFSIR_MODE.get(user_id, "short")
+    return USER_TAFSIR_MODE.get(user_id, "full")
 
 
 def shorten_tafsir(text: str, limit: int = SHORT_TAFSIR_LIMIT) -> str:
