@@ -51,6 +51,7 @@ async def start_dummy_server():
 
 # التوكن: ضعه في متغير بيئة اسمه BOT_TOKEN على Render (لا تكتبه داخل الملف)
 BOT_TOKEN = "8985243390:AAFwMzMbfit3_0OKb77KvGPOj5ZSBQmzRpU"
+
 DEVELOPER_USERNAME = "mh5_c"
 
 # آيدي المالك (الرقمي) المسموح له بفتح لوحة تحكم الأمن.
@@ -1570,27 +1571,118 @@ def _build_entries(texts: dict[int, str], ayah_nums: list[int]) -> list[tuple[in
     return entries
 
 
+# ---------------------------------------------------------------------------
+# تنسيق نص التفسير (فقرات + خط عريض للكلمات المهمة + إيموجيات)
+# ---------------------------------------------------------------------------
+
+TAFSIR_PARAGRAPH_SIZE = 320  # طول الفقرة التقريبي قبل كسرها لسهولة القراءة
+
+# كلمة مهمة -> إيموجي الفقرة التي تبدأ بها
+TAFSIR_KEYWORD_EMOJI: dict[str, str] = {}
+for _words, _emoji in [
+    (["قوله تعالى", "قوله جل ثناؤه", "يقول تعالى ذكره", "يقول الله تعالى",
+      "يقول تعالى", "قال الله تعالى", "قال تعالى"], "📖"),
+    (["قال رسول الله", "عن رسول الله", "قال النبي", "عن النبي", "الحديث"], "📜"),
+    (["والمعنى", "المعنى", "أي:", "يعني"], "💡"),
+    (["سبب النزول", "سبب نزول", "نزلت"], "📌"),
+    (["الفوائد", "فوائد", "فائدة"], "🌟"),
+    (["تنبيه"], "⚠️"),
+    (["الأحكام", "أحكام", "المسألة", "مسألة"], "⚖️"),
+    (["اختلف أهل التأويل", "اختلف العلماء", "اختلف أهل العلم"], "🔎"),
+    (["والصواب", "الصواب", "والراجح", "الراجح"], "✅"),
+]:
+    for _w in _words:
+        TAFSIR_KEYWORD_EMOJI[_w] = _emoji
+
+_AR = "ء-ي"
+_kw_alt = "|".join(
+    re.escape(w) for w in sorted(TAFSIR_KEYWORD_EMOJI, key=len, reverse=True)
+)
+TAFSIR_HIGHLIGHT_RE = re.compile(
+    rf"﴿[^﴾]{{1,500}}﴾|(?<![{_AR}])(?:{_kw_alt})(?![{_AR}])"
+)
+
+
+def tafsir_paragraphs(text: str) -> list[str]:
+    """يقسم النص إلى فقرات قصيرة مرتبة."""
+    paragraphs: list[str] = []
+    for block in re.split(r"\n+", text.replace("\r", "")):
+        block = re.sub(r"[ \t]+", " ", block).strip()
+        if not block:
+            continue
+        sentences = re.split(r"(?<=[.!؟?])\s+", block)
+        cur = ""
+        for sent in sentences:
+            if cur and len(cur) + len(sent) > TAFSIR_PARAGRAPH_SIZE:
+                paragraphs.append(cur)
+                cur = sent
+            else:
+                cur = f"{cur} {sent}" if cur else sent
+        if cur:
+            paragraphs.append(cur)
+
+    result: list[str] = []
+    for p in paragraphs:
+        if len(p) > TAFSIR_PIECE_LIMIT:
+            result.extend(_split_long(p, TAFSIR_PIECE_LIMIT))
+        else:
+            result.append(p)
+    return result
+
+
+def format_tafsir_paragraph(par: str) -> str:
+    escaped = html_lib.escape(par, quote=False)
+    state = {"emoji": None}
+
+    def repl(m: "re.Match") -> str:
+        txt = m.group(0)
+        if state["emoji"] is None and m.start() <= 60:
+            state["emoji"] = TAFSIR_KEYWORD_EMOJI.get(
+                txt, "📖" if txt.startswith("﴿") else None
+            )
+        return f"<b>{txt}</b>"
+
+    body = TAFSIR_HIGHLIGHT_RE.sub(repl, escaped)
+    return f"{state['emoji'] or '🔹'} {body}"
+
+
+def tafsir_text_parts(text: str) -> list[str]:
+    """يرجع أجزاء HTML جاهزة (كل جزء أقل من الحد المسموح)."""
+    parts: list[list[str]] = []
+    cur: list[str] = []
+    size = 0
+    for p in tafsir_paragraphs(text):
+        if cur and size + len(p) > TAFSIR_PIECE_LIMIT:
+            parts.append(cur)
+            cur, size = [], 0
+        cur.append(p)
+        size += len(p) + 2
+    if cur:
+        parts.append(cur)
+    return ["\n\n".join(format_tafsir_paragraph(p) for p in part) for part in parts]
+
+
 def build_tafsir_chunks(
     surah: dict, mufassir: dict, label: str, entries: list[tuple[int, str, str]]
 ) -> list[str]:
     head = (
-        f"<b>{mufassir['name']}</b> {EMOJI_TAFSIR}\n"
-        f"سورة <b>{surah['name']}</b> — {label}"
+        f"{EMOJI_TAFSIR} <b>{mufassir['name']}</b>\n"
+        f"🕋 سورة <b>{surah['name']}</b> • {label}"
     )
     pieces: list[str] = [head]
     for n, kind, text in entries:
-        title = f"<b>﴿ الآية {n} ﴾</b>"
+        title = f"✨ <b>الآية {n}</b>"
         if kind == "empty":
             pieces.append(
-                f"{title}\n<i>لا يوجد تفسير مستقل لهذه الآية في هذا الكتاب "
+                f"{title}\nℹ️ <i>لا يوجد تفسير مستقل لهذه الآية في هذا الكتاب "
                 "(قد تكون مشمولة ضمن تفسير آية مجاورة).</i>"
             )
         elif kind == "dup":
-            pieces.append(f"{title}\n<i>تفسيرها مذكور ضمن الآية السابقة.</i>")
+            pieces.append(f"{title}\nℹ️ <i>تفسيرها مذكور ضمن الآية السابقة.</i>")
         else:
-            parts = _split_long(html_lib.escape(text), TAFSIR_PIECE_LIMIT)
-            pieces.append(f"{title}\n{parts[0]}")
-            pieces.extend(parts[1:])
+            parts = tafsir_text_parts(text)
+            pieces.append(f"{title}\n<blockquote expandable>{parts[0]}</blockquote>")
+            pieces.extend(f"<blockquote expandable>{x}</blockquote>" for x in parts[1:])
 
     chunks: list[str] = []
     cur = ""
@@ -1610,13 +1702,13 @@ def build_tafsir_plain(
 ) -> str:
     lines = [f"{mufassir['name']} - سورة {surah['name']} - {label}", ""]
     for n, kind, text in entries:
-        lines.append(f"﴿ الآية {n} ﴾")
+        lines.append(f"✨ الآية {n}")
         if kind == "empty":
             lines.append("لا يوجد تفسير مستقل لهذه الآية في هذا الكتاب.")
         elif kind == "dup":
             lines.append("تفسيرها مذكور ضمن الآية السابقة.")
         else:
-            lines.append(text)
+            lines.append("\n\n".join(f"🔹 {p}" for p in tafsir_paragraphs(text)))
         lines.append("")
     return "\n".join(lines)
 
@@ -2168,3 +2260,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
