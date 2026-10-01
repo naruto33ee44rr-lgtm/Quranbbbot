@@ -51,7 +51,6 @@ async def start_dummy_server():
 
 # التوكن: ضعه في متغير بيئة اسمه BOT_TOKEN على Render (لا تكتبه داخل الملف)
 BOT_TOKEN = "8985243390:AAFwMzMbfit3_0OKb77KvGPOj5ZSBQmzRpU"
-
 DEVELOPER_USERNAME = "mh5_c"
 
 # آيدي المالك (الرقمي) المسموح له بفتح لوحة تحكم الأمن.
@@ -1420,9 +1419,13 @@ AYAH_COUNTS = [
     5, 4, 5, 6,
 ]
 
-MAX_TAFSIR_PAGES = 5          # أقصى عدد صفحات في الطلب الواحد
-MAX_TAFSIR_AYAHS = 30         # أقصى عدد آيات في الطلب الواحد
+MAX_TAFSIR_PAGES = 3          # أقصى عدد صفحات في الطلب الواحد
+MAX_TAFSIR_AYAHS = 15         # أقصى عدد آيات في الطلب الواحد
 TAFSIR_MESSAGE_LIMIT = 3800   # حد الرسالة الواحدة (تيليجرام 4096)
+TAFSIR_PART_LIMIT = 2800      # أقصى طول لجزء التفسير في الرسالة الواحدة (قبل التنسيق)
+TAFSIR_PARAGRAPH_SIZE = 320   # طول الفقرة التقريبي لسهولة القراءة
+TAFSIR_PARAGRAPH_MAX = 900    # أقصى طول لفقرة واحدة
+TAFSIR_LOOKBACK_AYAHS = 10    # للكتب التي تجمع عدة آيات في تفسير واحد
 TAFSIR_DOWNLOAD_TIMEOUT = 60
 
 TAFSIR_DIR = CACHE_DIR / "tafsir"
@@ -1530,18 +1533,19 @@ async def pages_to_surah_ayahs(surah: dict, pages: list[int]) -> list[int]:
 
 
 def _build_entries(texts: dict[int, str], ayah_nums: list[int]) -> list[tuple[int, str, str]]:
-    """يرجع (رقم الآية، النوع، النص). النوع: text / empty / dup"""
+    """يرجع (رقم الآية، النوع، النص). النوع: text / empty.
+    بعض الكتب تجمع عدة آيات في تفسير واحد فتكون الآيات التالية فارغة؛ في هذه الحالة
+    نعرض نص التفسير نفسه تحت كل آية حتى تظهر كل آية بتفسيرها الكامل."""
     entries = []
-    prev = None
     for n in ayah_nums:
         t = (texts.get(n) or "").strip()
         if not t:
-            entries.append((n, "empty", ""))
-        elif t == prev:
-            entries.append((n, "dup", ""))
-        else:
-            entries.append((n, "text", t))
-            prev = t
+            for k in range(n - 1, max(0, n - 1 - TAFSIR_LOOKBACK_AYAHS), -1):
+                prev = (texts.get(k) or "").strip()
+                if prev:
+                    t = prev
+                    break
+        entries.append((n, "text" if t else "empty", t))
     return entries
 
 
@@ -1549,31 +1553,55 @@ def _build_entries(texts: dict[int, str], ayah_nums: list[int]) -> list[tuple[in
 # تنسيق نص التفسير (فقرات + خط عريض للكلمات المهمة + إيموجيات)
 # ---------------------------------------------------------------------------
 
-SHORT_TAFSIR_LIMIT = 300   # عدد أحرف الشرح لكل آية (حوالي 5-7 أسطر على الجوال)
+
+def _split_long(text: str, limit: int) -> list[str]:
+    parts: list[str] = []
+    cur = ""
+    for line in text.split("\n"):
+        while len(line) > limit:
+            cut = line.rfind(" ", 0, limit)
+            if cut <= 0:
+                cut = limit
+            if cur:
+                parts.append(cur)
+                cur = ""
+            parts.append(line[:cut])
+            line = line[cut:].lstrip()
+        if len(cur) + len(line) + 1 > limit:
+            if cur:
+                parts.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    if cur:
+        parts.append(cur)
+    return parts
 
 
-def clean_tafsir_text(text: str) -> str:
-    """يحذف عناوين مكررة (نص الآية معروض أصلاً فوق الشرح)."""
-    original = text.replace("\r", "").strip()
-    cleaned = re.sub(r"^\s*القول في تأويل قوله[^\n]*\n+", "", original)
-    cleaned = re.sub(r"^\s*﴿[^﴾]{0,600}﴾\s*[:\-–]?\s*", "", cleaned)
-    return cleaned.strip() or original
+def tafsir_paragraphs(text: str) -> list[str]:
+    """يقسم النص الكامل إلى فقرات قصيرة مرتبة (بدون حذف أي كلمة)."""
+    paragraphs: list[str] = []
+    for block in re.split(r"\n+", text.replace("\r", "")):
+        block = re.sub(r"[ \t]+", " ", block).strip()
+        if not block:
+            continue
+        cur = ""
+        for sent in re.split(r"(?<=[.!؟?])\s+", block):
+            if cur and len(cur) + len(sent) > TAFSIR_PARAGRAPH_SIZE:
+                paragraphs.append(cur)
+                cur = sent
+            else:
+                cur = f"{cur} {sent}" if cur else sent
+        if cur:
+            paragraphs.append(cur)
 
-
-def shorten_tafsir(text: str, limit: int = SHORT_TAFSIR_LIMIT) -> str:
-    """يأخذ أول جمل التفسير حتى حدود limit ثم يقطع بشكل مرتب."""
-    flat = re.sub(r"\s+", " ", clean_tafsir_text(text)).strip()
-    if len(flat) <= limit:
-        return flat
-    out = ""
-    for sent in re.split(r"(?<=[.!؟?])\s+", flat):
-        if out and len(out) + len(sent) > limit:
-            break
-        out = f"{out} {sent}" if out else sent
-    if len(out) > limit * 1.4:
-        out = out[:limit].rsplit(" ", 1)[0]
-    out = out.rstrip(" ،:؛")
-    return out + " …" if len(out) < len(flat) else out
+    result: list[str] = []
+    for p in paragraphs:
+        if len(p) > TAFSIR_PARAGRAPH_MAX:
+            result.extend(_split_long(p, TAFSIR_PARAGRAPH_MAX))
+        else:
+            result.append(p)
+    return result
 
 
 # كلمة مهمة -> إيموجي الفقرة التي تبدأ بها
@@ -1682,6 +1710,24 @@ async def fetch_surah_ayah_texts(surah_num: int) -> dict[int, str]:
 # ---------------------------------------------------------------------------
 
 
+def tafsir_text_parts(text: str, first_limit: int) -> list[str]:
+    """يقسم التفسير الكامل إلى أجزاء HTML (كل جزء يناسب رسالة تيليجرام)."""
+    parts: list[list[str]] = []
+    cur: list[str] = []
+    size = 0
+    limit = first_limit
+    for p in tafsir_paragraphs(text):
+        if cur and size + len(p) > limit:
+            parts.append(cur)
+            cur, size = [], 0
+            limit = TAFSIR_PART_LIMIT
+        cur.append(p)
+        size += len(p) + 2
+    if cur:
+        parts.append(cur)
+    return ["\n\n".join(format_tafsir_paragraph(p) for p in part) for part in parts] or [""]
+
+
 def build_tafsir_chunks(
     surah: dict,
     mufassir: dict,
@@ -1697,20 +1743,26 @@ def build_tafsir_chunks(
     for n, kind, text in entries:
         lines = [f"✨ <b>الآية {n}</b>"]
         ayah = ayah_texts.get(n)
+        ayah_len = 0
         if ayah:
             lines.append(f"﴿ <b>{html_lib.escape(ayah, quote=False)}</b> ﴾")
+            ayah_len = len(ayah)
 
         if kind == "empty":
-            body = (
-                "ℹ️ <i>لا يوجد تفسير مستقل لهذه الآية في هذا الكتاب "
-                "(قد تكون مشمولة ضمن تفسير آية مجاورة).</i>"
+            lines.append(
+                "<blockquote expandable>ℹ️ <i>لا يوجد تفسير لهذه الآية في هذا الكتاب.</i></blockquote>"
             )
-        elif kind == "dup":
-            body = "ℹ️ <i>تفسيرها مذكور ضمن الآية السابقة.</i>"
-        else:
-            body = format_tafsir_paragraph(shorten_tafsir(text))
-        lines.append(f"<blockquote>{body}</blockquote>")
+            pieces.append("\n".join(lines))
+            continue
+
+        first_limit = max(600, TAFSIR_PART_LIMIT - ayah_len - 100)
+        parts = tafsir_text_parts(text, first_limit)
+        lines.append(f"<blockquote expandable>{parts[0]}</blockquote>")
         pieces.append("\n".join(lines))
+        for x in parts[1:]:
+            pieces.append(
+                f"✨ <b>تتمة الآية {n}</b>\n<blockquote expandable>{x}</blockquote>"
+            )
 
     chunks: list[str] = []
     cur = ""
