@@ -1423,7 +1423,6 @@ AYAH_COUNTS = [
 MAX_TAFSIR_PAGES = 5          # أقصى عدد صفحات في الطلب الواحد
 MAX_TAFSIR_AYAHS = 30         # أقصى عدد آيات في الطلب الواحد
 TAFSIR_MESSAGE_LIMIT = 3800   # حد الرسالة الواحدة (تيليجرام 4096)
-TAFSIR_PIECE_LIMIT = 3000     # حد القطعة الواحدة قبل التجميع
 TAFSIR_DOWNLOAD_TIMEOUT = 60
 
 TAFSIR_DIR = CACHE_DIR / "tafsir"
@@ -1530,30 +1529,6 @@ async def pages_to_surah_ayahs(surah: dict, pages: list[int]) -> list[int]:
 # ---------------------------------------------------------------------------
 
 
-def _split_long(text: str, limit: int) -> list[str]:
-    parts: list[str] = []
-    cur = ""
-    for line in text.split("\n"):
-        while len(line) > limit:
-            cut = line.rfind(" ", 0, limit)
-            if cut <= 0:
-                cut = limit
-            if cur:
-                parts.append(cur)
-                cur = ""
-            parts.append(line[:cut])
-            line = line[cut:].lstrip()
-        if len(cur) + len(line) + 1 > limit:
-            if cur:
-                parts.append(cur)
-            cur = line
-        else:
-            cur = f"{cur}\n{line}" if cur else line
-    if cur:
-        parts.append(cur)
-    return parts
-
-
 def _build_entries(texts: dict[int, str], ayah_nums: list[int]) -> list[tuple[int, str, str]]:
     """يرجع (رقم الآية، النوع، النص). النوع: text / empty / dup"""
     entries = []
@@ -1574,17 +1549,20 @@ def _build_entries(texts: dict[int, str], ayah_nums: list[int]) -> list[tuple[in
 # تنسيق نص التفسير (فقرات + خط عريض للكلمات المهمة + إيموجيات)
 # ---------------------------------------------------------------------------
 
-USER_TAFSIR_MODE: dict[int, str] = {}   # "full" (افتراضي) أو "short"
-SHORT_TAFSIR_LIMIT = 350                # عدد أحرف التفسير المختصر لكل آية
+SHORT_TAFSIR_LIMIT = 300   # عدد أحرف الشرح لكل آية (حوالي 5-7 أسطر على الجوال)
 
 
-def get_user_tafsir_mode(user_id: Optional[int]) -> str:
-    return USER_TAFSIR_MODE.get(user_id, "full")
+def clean_tafsir_text(text: str) -> str:
+    """يحذف عناوين مكررة (نص الآية معروض أصلاً فوق الشرح)."""
+    original = text.replace("\r", "").strip()
+    cleaned = re.sub(r"^\s*القول في تأويل قوله[^\n]*\n+", "", original)
+    cleaned = re.sub(r"^\s*﴿[^﴾]{0,600}﴾\s*[:\-–]?\s*", "", cleaned)
+    return cleaned.strip() or original
 
 
 def shorten_tafsir(text: str, limit: int = SHORT_TAFSIR_LIMIT) -> str:
     """يأخذ أول جمل التفسير حتى حدود limit ثم يقطع بشكل مرتب."""
-    flat = re.sub(r"\s+", " ", text).strip()
+    flat = re.sub(r"\s+", " ", clean_tafsir_text(text)).strip()
     if len(flat) <= limit:
         return flat
     out = ""
@@ -1592,13 +1570,11 @@ def shorten_tafsir(text: str, limit: int = SHORT_TAFSIR_LIMIT) -> str:
         if out and len(out) + len(sent) > limit:
             break
         out = f"{out} {sent}" if out else sent
-    if len(out) > limit * 1.6:
+    if len(out) > limit * 1.4:
         out = out[:limit].rsplit(" ", 1)[0]
     out = out.rstrip(" ،:؛")
     return out + " …" if len(out) < len(flat) else out
 
-
-TAFSIR_PARAGRAPH_SIZE = 320  # طول الفقرة التقريبي قبل كسرها لسهولة القراءة
 
 # كلمة مهمة -> إيموجي الفقرة التي تبدأ بها
 TAFSIR_KEYWORD_EMOJI: dict[str, str] = {}
@@ -1626,33 +1602,6 @@ TAFSIR_HIGHLIGHT_RE = re.compile(
 )
 
 
-def tafsir_paragraphs(text: str) -> list[str]:
-    """يقسم النص إلى فقرات قصيرة مرتبة."""
-    paragraphs: list[str] = []
-    for block in re.split(r"\n+", text.replace("\r", "")):
-        block = re.sub(r"[ \t]+", " ", block).strip()
-        if not block:
-            continue
-        sentences = re.split(r"(?<=[.!؟?])\s+", block)
-        cur = ""
-        for sent in sentences:
-            if cur and len(cur) + len(sent) > TAFSIR_PARAGRAPH_SIZE:
-                paragraphs.append(cur)
-                cur = sent
-            else:
-                cur = f"{cur} {sent}" if cur else sent
-        if cur:
-            paragraphs.append(cur)
-
-    result: list[str] = []
-    for p in paragraphs:
-        if len(p) > TAFSIR_PIECE_LIMIT:
-            result.extend(_split_long(p, TAFSIR_PIECE_LIMIT))
-        else:
-            result.append(p)
-    return result
-
-
 def format_tafsir_paragraph(par: str) -> str:
     escaped = html_lib.escape(par, quote=False)
     state = {"emoji": None}
@@ -1669,24 +1618,76 @@ def format_tafsir_paragraph(par: str) -> str:
     return f"{state['emoji'] or '🔹'} {body}"
 
 
-def tafsir_text_parts(text: str) -> list[str]:
-    """يرجع أجزاء HTML جاهزة (كل جزء أقل من الحد المسموح)."""
-    parts: list[list[str]] = []
-    cur: list[str] = []
-    size = 0
-    for p in tafsir_paragraphs(text):
-        if cur and size + len(p) > TAFSIR_PIECE_LIMIT:
-            parts.append(cur)
-            cur, size = [], 0
-        cur.append(p)
-        size += len(p) + 2
-    if cur:
-        parts.append(cur)
-    return ["\n\n".join(format_tafsir_paragraph(p) for p in part) for part in parts]
+# ---------------------------------------------------------------------------
+# نص الآية (الرسم العثماني) من Quran.com
+# ---------------------------------------------------------------------------
+
+AYAH_TEXT_URL = "https://api.quran.com/api/v4/quran/verses/uthmani?chapter_number={surah}"
+AYAH_TEXT_DIR = CACHE_DIR / "ayah_text"
+AYAH_TEXT_DIR.mkdir(parents=True, exist_ok=True)
+_AYAH_TEXT_MEM: dict[int, dict[int, str]] = {}
+
+
+async def fetch_surah_ayah_texts(surah_num: int) -> dict[int, str]:
+    """يرجع {رقم الآية: نصها}. إذا فشل الجلب يرجع {} ويكمل البوت بدون نص الآية."""
+    if surah_num in _AYAH_TEXT_MEM:
+        return _AYAH_TEXT_MEM[surah_num]
+
+    disk_path = AYAH_TEXT_DIR / f"{surah_num}.json"
+    if disk_path.exists():
+        try:
+            raw_disk = json.loads(disk_path.read_text(encoding="utf-8"))
+            data = {int(k): v for k, v in raw_disk.items()}
+            if data:
+                _AYAH_TEXT_MEM[surah_num] = data
+                return data
+        except Exception:
+            logger.warning("تعذرت قراءة نص الآيات من القرص: %s", disk_path)
+
+    url = AYAH_TEXT_URL.format(surah=surah_num)
+    raw: Optional[bytes] = None
+    for attempt in range(1, 4):
+        raw = await download_bytes(url, timeout_seconds=30)
+        if raw:
+            break
+        await asyncio.sleep(0.5 * attempt)
+    if not raw:
+        return {}
+
+    data: dict[int, str] = {}
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+        for verse in payload.get("verses", []):
+            key = verse.get("verse_key", "")
+            if ":" in key:
+                data[int(key.split(":")[1])] = (verse.get("text_uthmani") or "").strip()
+    except Exception:
+        logger.warning("تعذر تحليل نص آيات السورة %s", surah_num)
+        return {}
+
+    if data:
+        _AYAH_TEXT_MEM[surah_num] = data
+        try:
+            disk_path.write_text(
+                json.dumps({str(k): v for k, v in data.items()}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception:
+            logger.warning("تعذر حفظ نص الآيات على القرص: %s", disk_path)
+    return data
+
+
+# ---------------------------------------------------------------------------
+# بناء الرسائل: نص الآية ثم الشرح المختصر كاقتباس
+# ---------------------------------------------------------------------------
 
 
 def build_tafsir_chunks(
-    surah: dict, mufassir: dict, label: str, entries: list[tuple[int, str, str]]
+    surah: dict,
+    mufassir: dict,
+    label: str,
+    entries: list[tuple[int, str, str]],
+    ayah_texts: dict[int, str],
 ) -> list[str]:
     head = (
         f"{EMOJI_TAFSIR} <b>{mufassir['name']}</b>\n"
@@ -1694,18 +1695,22 @@ def build_tafsir_chunks(
     )
     pieces: list[str] = [head]
     for n, kind, text in entries:
-        title = f"✨ <b>الآية {n}</b>"
+        lines = [f"✨ <b>الآية {n}</b>"]
+        ayah = ayah_texts.get(n)
+        if ayah:
+            lines.append(f"﴿ <b>{html_lib.escape(ayah, quote=False)}</b> ﴾")
+
         if kind == "empty":
-            pieces.append(
-                f"{title}\nℹ️ <i>لا يوجد تفسير مستقل لهذه الآية في هذا الكتاب "
+            body = (
+                "ℹ️ <i>لا يوجد تفسير مستقل لهذه الآية في هذا الكتاب "
                 "(قد تكون مشمولة ضمن تفسير آية مجاورة).</i>"
             )
         elif kind == "dup":
-            pieces.append(f"{title}\nℹ️ <i>تفسيرها مذكور ضمن الآية السابقة.</i>")
+            body = "ℹ️ <i>تفسيرها مذكور ضمن الآية السابقة.</i>"
         else:
-            parts = tafsir_text_parts(text)
-            pieces.append(f"{title}\n<blockquote expandable>{parts[0]}</blockquote>")
-            pieces.extend(f"<blockquote expandable>{x}</blockquote>" for x in parts[1:])
+            body = format_tafsir_paragraph(shorten_tafsir(text))
+        lines.append(f"<blockquote>{body}</blockquote>")
+        pieces.append("\n".join(lines))
 
     chunks: list[str] = []
     cur = ""
@@ -1743,23 +1748,19 @@ async def send_tafsir(
         except Exception:
             pass
 
-    texts = await fetch_tafsir_surah(mufassir["slug"], surah["number"])
+    texts, ayah_texts = await asyncio.gather(
+        fetch_tafsir_surah(mufassir["slug"], surah["number"]),
+        fetch_surah_ayah_texts(surah["number"]),
+    )
     if not texts:
         await _drop_waiting()
         await message.answer("⚠️ تعذر جلب التفسير حالياً، حاول بعد قليل.")
         return
 
     entries = _build_entries(texts, ayah_nums)
-    short = get_user_tafsir_mode(user_id) == "short"
-    if short:
-        entries = [
-            (n, k, shorten_tafsir(t) if k == "text" else t) for n, k, t in entries
-        ]
-        label = f"{label} ✂️ مختصر"
-    chunks = build_tafsir_chunks(surah, mufassir, label, entries)
+    chunks = build_tafsir_chunks(surah, mufassir, label, entries, ayah_texts)
 
     try:
-        # دائماً رسائل نصية (بدون ملفات) مهما طال التفسير
         for chunk in chunks:
             for attempt in range(3):
                 try:
@@ -1797,16 +1798,6 @@ def build_mufassir_menu(user_id: Optional[int]) -> InlineKeyboardMarkup:
                 )
             ]
         )
-    is_short = get_user_tafsir_mode(user_id) == "short"
-    rows.append(
-        [
-            InlineKeyboardButton(
-                text="النمط: مختصر ✂️ (اضغط للتبديل)" if is_short else "النمط: كامل 📚 (اضغط للتبديل)",
-                callback_data="toggle_tafsir_mode",
-                style="success" if is_short else "primary",
-            )
-        ]
-    )
     rows.append(
         [
             InlineKeyboardButton(
@@ -1979,8 +1970,7 @@ async def on_open_tafsir_section(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     mufassir = get_user_mufassir(callback.from_user.id)
-    mode_name = "مختصر ✂️" if get_user_tafsir_mode(callback.from_user.id) == "short" else "كامل 📚"
-    text = f"{TAFSIR_HEADER_TEXT}\nالمفسر الحالي: <b>{mufassir['name']}</b> • النمط: <b>{mode_name}</b>"
+    text = f"{TAFSIR_HEADER_TEXT}\nالمفسر الحالي: <b>{mufassir['name']}</b>"
     try:
         await callback.message.edit_text(
             text,
@@ -1998,22 +1988,6 @@ async def on_open_mufassir_section(callback: CallbackQuery):
         await callback.message.edit_text(
             MUFASSIR_HEADER_TEXT,
             reply_markup=build_mufassir_menu(callback.from_user.id),
-            parse_mode=ParseMode.HTML,
-        )
-    except TelegramAPIError:
-        pass
-
-
-@router.callback_query(F.data == "toggle_tafsir_mode")
-async def on_toggle_tafsir_mode(callback: CallbackQuery):
-    uid = callback.from_user.id
-    new_mode = "full" if get_user_tafsir_mode(uid) == "short" else "short"
-    USER_TAFSIR_MODE[uid] = new_mode
-    await callback.answer("تم التبديل إلى: " + ("مختصر ✂️" if new_mode == "short" else "كامل 📚"))
-    try:
-        await callback.message.edit_text(
-            MUFASSIR_HEADER_TEXT,
-            reply_markup=build_mufassir_menu(uid),
             parse_mode=ParseMode.HTML,
         )
     except TelegramAPIError:
@@ -2045,8 +2019,7 @@ async def on_tafsir_surah_page(callback: CallbackQuery, state: FSMContext):
     page = int(callback.data.split(":")[1])
     await callback.answer()
     mufassir = get_user_mufassir(callback.from_user.id)
-    mode_name = "مختصر ✂️" if get_user_tafsir_mode(callback.from_user.id) == "short" else "كامل 📚"
-    text = f"{TAFSIR_HEADER_TEXT}\nالمفسر الحالي: <b>{mufassir['name']}</b> • النمط: <b>{mode_name}</b>"
+    text = f"{TAFSIR_HEADER_TEXT}\nالمفسر الحالي: <b>{mufassir['name']}</b>"
     try:
         await callback.message.edit_text(
             text,
