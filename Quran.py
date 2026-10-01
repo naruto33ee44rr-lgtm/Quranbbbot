@@ -4,6 +4,7 @@ import html as html_lib
 import json
 import logging
 import os
+import random
 import re
 from datetime import datetime
 from pathlib import Path
@@ -664,6 +665,14 @@ def build_home_menu() -> InlineKeyboardMarkup:
                     style="danger",
                     icon_custom_emoji_id=ID_RECITER_EMOJI,
                 ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="آية عشوائية",
+                    callback_data="random_ayah",
+                    style="danger",
+                    icon_custom_emoji_id=ID_SURAH_CHOSEN,
+                )
             ],
             [
                 InlineKeyboardButton(
@@ -1854,6 +1863,203 @@ async def on_tafsir_close(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# آية عشوائية: نص الآية + مقطع صوتي + تفسير مختصر في رسالة واحدة
+# ---------------------------------------------------------------------------
+
+CAPTION_LIMIT = 1024          # حد تيليجرام لوصف (caption) الملف الصوتي
+RANDOM_AYAH_MAX_CHARS = 450   # لا نختار آية أطول من هذا حتى يتسع الوصف للتفسير
+
+
+def pick_random_ayah() -> tuple[int, int]:
+    r = random.randint(1, sum(AYAH_COUNTS))
+    for surah_num, count in enumerate(AYAH_COUNTS, start=1):
+        if r <= count:
+            return surah_num, r
+        r -= count
+    return 1, 1
+
+
+def shorten_for_caption(text: str, limit: int) -> str:
+    """اختصار بنهاية جملة قدر الإمكان (التفسير الكامل متاح بزر)."""
+    flat = re.sub(r"\s+", " ", text).strip()
+    if len(flat) <= limit:
+        return flat
+    room = limit - 2
+    out = ""
+    for sent in re.split(r"(?<=[.!؟?])\s+", flat):
+        if out and len(out) + len(sent) + 1 > room:
+            break
+        out = f"{out} {sent}" if out else sent
+    if len(out) > room:
+        out = out[:room].rsplit(" ", 1)[0]
+    out = out.rstrip(" ،:؛")
+    return out + " …"
+
+
+def _plain_len(html_text: str) -> int:
+    return len(re.sub(r"<[^>]+>", "", html_text))
+
+
+def build_random_caption(
+    surah: dict,
+    ayah_num: int,
+    ayah_text: str,
+    reciter: dict,
+    tafsir_text: Optional[str],
+) -> str:
+    head = (
+        f"🎲 <b>آية عشوائية</b>\n"
+        f"📖 سورة <b>{surah['name']}</b> • الآية <b>{ayah_num}</b>"
+    )
+    ayah_line = (
+        f"﴿ <b>{html_lib.escape(ayah_text, quote=False)}</b> ﴾" if ayah_text else ""
+    )
+    footer = f"{EMOJI_RECITER_HTML} <b>{reciter['name']}</b>"
+
+    fixed = _plain_len(head) + _plain_len(ayah_line) + _plain_len(footer)
+    budget = CAPTION_LIMIT - fixed - 60   # هامش أمان للأسطر والإيموجي
+
+    if tafsir_text and budget >= 120:
+        body = format_tafsir_paragraph(shorten_for_caption(tafsir_text, budget))
+        tafsir_block = f"<blockquote expandable>{body}</blockquote>"
+    elif tafsir_text:
+        tafsir_block = "<i>اضغط «التفسير الكامل» لقراءة التفسير 👇</i>"
+    else:
+        tafsir_block = "<i>تعذر جلب التفسير حالياً.</i>"
+
+    return "\n\n".join(x for x in [head, ayah_line, tafsir_block, footer] if x)
+
+
+async def fetch_ayah_audio(reciter: dict, surah_num: int, ayah_num: int) -> Optional[bytes]:
+    key = (reciter["key"], surah_num, ayah_num)
+    if key in AUDIO_CACHE:
+        return AUDIO_CACHE[key]
+
+    disk_path = audio_disk_path(reciter["key"], surah_num, ayah_num)
+    if disk_path.exists():
+        try:
+            return disk_path.read_bytes()
+        except Exception:
+            logger.warning("تعذرت قراءة الصوت من القرص: %s", disk_path)
+
+    url = f"{reciter['audio_url']}/{surah_num:03d}{ayah_num:03d}.mp3"
+    data = await download_bytes_with_retry(url)
+    if data:
+        if len(AUDIO_CACHE) > MAX_CACHE_ITEMS:
+            AUDIO_CACHE.clear()
+        AUDIO_CACHE[key] = data
+        try:
+            disk_path.write_bytes(data)
+        except Exception:
+            logger.warning("تعذر حفظ الصوت على القرص: %s", disk_path)
+    return data
+
+
+def build_random_keyboard(muf_idx: int, surah_key: str, ayah_num: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="آية أخرى",
+                    callback_data="random_ayah",
+                    style="success",
+                    icon_custom_emoji_id=ID_SURAH_CHOSEN,
+                ),
+                InlineKeyboardButton(
+                    text="التفسير الكامل",
+                    callback_data=f"rnd_full:{muf_idx}:{surah_key}:{ayah_num}",
+                    style="primary",
+                    icon_custom_emoji_id=ID_MAIN_SECTION,
+                ),
+            ],
+            [InlineKeyboardButton(text="إغلاق", callback_data="tf_close", style="danger")],
+        ]
+    )
+
+
+async def send_random_ayah(message: Message, user_id: Optional[int]):
+    mufassir = get_user_mufassir(user_id)
+    reciter = get_user_reciter(user_id)
+
+    surah_num, ayah_num, ayah_text = 1, 1, ""
+    for _ in range(6):
+        surah_num, ayah_num = pick_random_ayah()
+        ayah_texts = await fetch_surah_ayah_texts(surah_num)
+        ayah_text = ayah_texts.get(ayah_num, "")
+        if not ayah_texts or len(ayah_text) <= RANDOM_AYAH_MAX_CHARS:
+            break
+
+    surah = SURAHS[surah_num - 1]
+    texts, audio = await asyncio.gather(
+        fetch_tafsir_surah(mufassir["slug"], surah_num),
+        fetch_ayah_audio(reciter, surah_num, ayah_num),
+    )
+
+    tafsir_text = None
+    if texts:
+        _, kind, t = _build_entries(texts, [ayah_num])[0]
+        tafsir_text = t if kind == "text" else "لا يوجد تفسير لهذه الآية في هذا الكتاب."
+
+    caption = build_random_caption(surah, ayah_num, ayah_text, reciter, tafsir_text)
+    markup = build_random_keyboard(MUFASSIRS.index(mufassir), surah["key"], ayah_num)
+
+    try:
+        if audio:
+            await message.answer_audio(
+                audio=BufferedInputFile(audio, filename=f"{surah_num:03d}{ayah_num:03d}.mp3"),
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup,
+                title=f"سورة {surah['name']} - الآية {ayah_num}",
+                performer=reciter["name"],
+            )
+        else:
+            await message.answer(
+                caption + "\n\n⚠️ تعذر تحميل المقطع الصوتي.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup,
+            )
+    except TelegramAPIError:
+        logger.exception("فشل إرسال الآية العشوائية")
+        await message.answer("⚠️ حدث خطأ أثناء إرسال الآية، حاول مرة أخرى.")
+
+
+@router.callback_query(F.data == "random_ayah")
+async def on_random_ayah(callback: CallbackQuery):
+    await callback.answer()
+    waiting = await callback.message.answer(
+        f"<b>جارِ</b> تجهيز <b>الآية</b> {EMOJI_WAITING_HTML}",
+        parse_mode=ParseMode.HTML,
+    )
+    try:
+        await send_random_ayah(callback.message, callback.from_user.id)
+    finally:
+        try:
+            await waiting.delete()
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data.startswith("rnd_full:"))
+async def on_random_full_tafsir(callback: CallbackQuery):
+    try:
+        _, mi, skey, ayah_str = callback.data.split(":")
+        mufassir = MUFASSIRS[int(mi)]
+        surah = SURAHS_DICT[skey]
+        ayah_num = int(ayah_str)
+    except Exception:
+        await callback.answer()
+        return
+    await callback.answer()
+    view = await build_tafsir_view(surah, mufassir, ayah_num, ayah_num, ayah_num, 0)
+    if not view:
+        await callback.message.answer("⚠️ تعذر جلب التفسير حالياً، حاول بعد قليل.")
+        return
+    text, markup = view
+    await callback.message.answer(text, reply_markup=markup, parse_mode=ParseMode.HTML)
 
 
 # ---------------------------------------------------------------------------
