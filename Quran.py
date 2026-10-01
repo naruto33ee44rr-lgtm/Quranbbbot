@@ -83,6 +83,7 @@ ID_GRID_TITLE = "6070970164482939513"
 ID_RANGE_TITLE = "6071000899268910391"
 ID_ALERT = "6269316311172518259"
 ID_SECURITY_PANEL = "6269316311172518259"
+ID_DICE_EMOJI = "5355007465656170344"  # إيموجي الآية العشوائية (بدل النرد)
 
 # صيغ HTML الجاهزة للعرض
 EMOJI_WELCOME = f'<tg-emoji emoji-id="{ID_WELCOME_EMOJI}">👋</tg-emoji>'
@@ -96,6 +97,7 @@ EMOJI_FUTURE_SECTION = f'<tg-emoji emoji-id="{ID_FUTURE_SECTION}">📌</tg-emoji
 EMOJI_MAIN_SECTION = f'<tg-emoji emoji-id="{ID_MAIN_SECTION}">📖</tg-emoji>'
 EMOJI_SUGGESTIONS_ICON = f'<tg-emoji emoji-id="{ID_SUGGESTIONS_ICON}">💡</tg-emoji>'
 EMOJI_SURAH_CHOSEN = f'<tg-emoji emoji-id="{ID_SURAH_CHOSEN}">✨</tg-emoji>'
+EMOJI_DICE = f'<tg-emoji emoji-id="{ID_DICE_EMOJI}">🎲</tg-emoji>'
 
 EMOJI_SELECT_MODE = f'<tg-emoji emoji-id="{ID_WELCOME_EMOJI}">⚙️</tg-emoji>'
 
@@ -1413,6 +1415,9 @@ MUFASSIRS_DICT = {m["key"]: m for m in MUFASSIRS}
 DEFAULT_MUFASSIR_KEY = MUFASSIRS[0]["key"]
 USER_MUFASSIR: dict[int, str] = {}
 
+# المفسر الثابت للآية العشوائية (التفسير الميسر دائماً)
+RANDOM_AYAH_MUFASSIR_KEY = "muyassar"
+
 # عدد آيات كل سورة (1 → 114)
 AYAH_COUNTS = [
     7, 286, 200, 176, 120, 165, 206, 75, 129, 109,
@@ -1911,7 +1916,7 @@ def build_random_caption(
     tafsir_text: Optional[str],
 ) -> str:
     head = (
-        f"🎲 <b>آية عشوائية</b>\n"
+        f"{EMOJI_DICE} <b>آية عشوائية</b>\n"
         f"📖 سورة <b>{surah['name']}</b> • الآية <b>{ayah_num}</b>"
     )
     ayah_line = (
@@ -1981,7 +1986,8 @@ def build_random_keyboard(muf_idx: int, surah_key: str, ayah_num: int) -> Inline
 
 
 async def send_random_ayah(message: Message, user_id: Optional[int]):
-    mufassir = get_user_mufassir(user_id)
+    # التفسير ثابت دائماً على التفسير الميسر، والقارئ حسب اختيار المستخدم
+    mufassir = MUFASSIRS_DICT[RANDOM_AYAH_MUFASSIR_KEY]
     reciter = get_user_reciter(user_id)
 
     surah_num, ayah_num, ayah_text = 1, 1, ""
