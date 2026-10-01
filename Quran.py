@@ -50,8 +50,7 @@ async def start_dummy_server():
 # ============================================================================
 
 # التوكن: ضعه في متغير بيئة اسمه BOT_TOKEN على Render (لا تكتبه داخل الملف)
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_التوكن_هنا")
-
+BOT_TOKEN = "8985243390:AAFwMzMbfit3_0OKb77KvGPOj5ZSBQmzRpU"
 DEVELOPER_USERNAME = "mh5_c"
 
 # آيدي المالك (الرقمي) المسموح له بفتح لوحة تحكم الأمن.
