@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import asyncio
+import html as html_lib
 import json
 import logging
 import os
@@ -48,7 +49,8 @@ async def start_dummy_server():
 # الإعدادات العامة والأرقام المعرفية للإيموجيات المخصصة
 # ============================================================================
 
-BOT_TOKEN = "8985243390:AAFwMzMbfit3_0OKb77KvGPOj5ZSBQmzRpU"
+# التوكن: ضعه في متغير بيئة اسمه BOT_TOKEN على Render (لا تكتبه داخل الملف)
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_التوكن_هنا")
 
 DEVELOPER_USERNAME = "mh5_c"
 
@@ -645,6 +647,20 @@ def build_home_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="أختر القارئ",
                     callback_data="open_reciter_section",
+                    style="danger",
+                    icon_custom_emoji_id=ID_RECITER_EMOJI,
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="تفسير القرآن الكريم",
+                    callback_data="open_tafsir_section",
+                    style="danger",
+                    icon_custom_emoji_id=ID_MAIN_SECTION,
+                ),
+                InlineKeyboardButton(
+                    text="أختر المفسر",
+                    callback_data="open_mufassir_section",
                     style="danger",
                     icon_custom_emoji_id=ID_RECITER_EMOJI,
                 ),
@@ -1366,6 +1382,769 @@ async def on_sec_user_details(callback: CallbackQuery):
         )
     except TelegramAPIError:
         pass
+
+
+# ============================================================================
+# قسم تفسير القرآن الكريم (جديد)
+# ============================================================================
+
+
+TAFSIR_API_URL = (
+    "https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/{slug}/{surah}.json"
+)
+
+MUFASSIRS = [
+    {"key": "tabari", "name": "تفسير الطبري", "slug": "ar-tafsir-al-tabari"},
+    {"key": "ibn_kathir", "name": "تفسير ابن كثير", "slug": "ar-tafsir-ibn-kathir"},
+    {"key": "baghawi", "name": "تفسير البغوي", "slug": "ar-tafsir-al-baghawi"},
+    {"key": "saadi", "name": "تفسير السعدي", "slug": "ar-tafseer-al-saddi"},
+    {"key": "muyassar", "name": "التفسير الميسر", "slug": "ar-tafsir-muyassar"},
+]
+MUFASSIRS_DICT = {m["key"]: m for m in MUFASSIRS}
+DEFAULT_MUFASSIR_KEY = MUFASSIRS[0]["key"]
+USER_MUFASSIR: dict[int, str] = {}
+
+# عدد آيات كل سورة (1 → 114)
+AYAH_COUNTS = [
+    7, 286, 200, 176, 120, 165, 206, 75, 129, 109,
+    123, 111, 43, 52, 99, 128, 111, 110, 98, 135,
+    112, 78, 118, 64, 77, 227, 93, 88, 69, 60,
+    34, 30, 73, 54, 45, 83, 182, 88, 75, 85,
+    54, 53, 89, 59, 37, 35, 38, 29, 18, 45,
+    60, 49, 62, 55, 78, 96, 29, 22, 24, 13,
+    14, 11, 11, 18, 12, 12, 30, 52, 52, 44,
+    28, 28, 20, 56, 40, 31, 50, 40, 46, 42,
+    29, 19, 36, 25, 22, 17, 19, 26, 30, 20,
+    15, 21, 11, 8, 8, 19, 5, 8, 8, 11,
+    11, 8, 3, 9, 5, 4, 7, 3, 6, 3,
+    5, 4, 5, 6,
+]
+
+MAX_TAFSIR_PAGES = 5          # أقصى عدد صفحات في الطلب الواحد
+MAX_TAFSIR_AYAHS = 30         # أقصى عدد آيات في الطلب الواحد
+MAX_TAFSIR_MESSAGES = 6       # إذا زاد التفسير عن هذا العدد من الرسائل يُرسل كملف txt
+TAFSIR_MESSAGE_LIMIT = 3800   # حد الرسالة الواحدة (تيليجرام 4096)
+TAFSIR_PIECE_LIMIT = 3000     # حد القطعة الواحدة قبل التجميع
+TAFSIR_DOWNLOAD_TIMEOUT = 60
+
+TAFSIR_DIR = CACHE_DIR / "tafsir"
+TAFSIR_DIR.mkdir(parents=True, exist_ok=True)
+_TAFSIR_MEM: dict[tuple[str, int], dict[int, str]] = {}
+
+# إيموجيات (استخدمت نفس المعرفات الموجودة عندك، بدّلها بما تريد)
+EMOJI_TAFSIR = f'<tg-emoji emoji-id="{ID_MAIN_SECTION}">📖</tg-emoji>'
+EMOJI_MUFASSIR = f'<tg-emoji emoji-id="{ID_RECITER_EMOJI}">🎙</tg-emoji>'
+
+TAFSIR_HEADER_TEXT = f"أختر <b>سورة</b> لعرض <b>التفسير</b> {EMOJI_SELECT_MODE}"
+MUFASSIR_HEADER_TEXT = f"أختر <b>المفسر</b> {EMOJI_MUFASSIR}"
+
+
+class TafsirStates(StatesGroup):
+    waiting_for_page_range = State()
+    waiting_for_single_ayah = State()
+    waiting_for_ayah_range = State()
+
+
+def get_user_mufassir(user_id: Optional[int]) -> dict:
+    key = USER_MUFASSIR.get(user_id, DEFAULT_MUFASSIR_KEY)
+    return MUFASSIRS_DICT.get(key, MUFASSIRS[0])
+
+
+# ---------------------------------------------------------------------------
+# جلب التفسير
+# ---------------------------------------------------------------------------
+
+
+def _parse_tafsir_payload(payload) -> dict[int, str]:
+    items = payload.get("ayahs") if isinstance(payload, dict) else payload
+    result: dict[int, str] = {}
+    for item in items or []:
+        try:
+            result[int(item.get("ayah"))] = (item.get("text") or "").strip()
+        except Exception:
+            continue
+    return result
+
+
+async def fetch_tafsir_surah(slug: str, surah_num: int) -> Optional[dict[int, str]]:
+    key = (slug, surah_num)
+    if key in _TAFSIR_MEM:
+        return _TAFSIR_MEM[key]
+
+    disk_path = TAFSIR_DIR / slug / f"{surah_num}.json"
+    raw: Optional[bytes] = None
+    if disk_path.exists():
+        try:
+            raw = disk_path.read_bytes()
+        except Exception:
+            raw = None
+
+    from_disk = raw is not None
+    if raw is None:
+        url = TAFSIR_API_URL.format(slug=slug, surah=surah_num)
+        for attempt in range(1, 4):
+            raw = await download_bytes(url, timeout_seconds=TAFSIR_DOWNLOAD_TIMEOUT)
+            if raw:
+                break
+            await asyncio.sleep(0.5 * attempt)
+
+    if not raw:
+        return None
+
+    try:
+        payload = await asyncio.to_thread(json.loads, raw.decode("utf-8"))
+        texts = _parse_tafsir_payload(payload)
+    except Exception:
+        logger.warning("تعذر تحليل ملف التفسير %s/%s", slug, surah_num)
+        if from_disk:
+            try:
+                disk_path.unlink()
+            except Exception:
+                pass
+        return None
+
+    if not texts:
+        return None
+
+    if not from_disk:
+        try:
+            disk_path.parent.mkdir(parents=True, exist_ok=True)
+            disk_path.write_bytes(raw)
+        except Exception:
+            logger.warning("تعذر حفظ التفسير على القرص: %s", disk_path)
+
+    if len(_TAFSIR_MEM) >= 8:
+        _TAFSIR_MEM.clear()
+    _TAFSIR_MEM[key] = texts
+    return texts
+
+
+async def pages_to_surah_ayahs(surah: dict, pages: list[int]) -> list[int]:
+    """آيات هذه السورة فقط الموجودة داخل الصفحات المحددة."""
+    pages_ayahs = await asyncio.gather(*(get_page_ayahs(p) for p in pages))
+    nums = {a for lst in pages_ayahs for (s, a) in lst if s == surah["number"]}
+    return sorted(nums)
+
+
+# ---------------------------------------------------------------------------
+# بناء الرسائل
+# ---------------------------------------------------------------------------
+
+
+def _split_long(text: str, limit: int) -> list[str]:
+    parts: list[str] = []
+    cur = ""
+    for line in text.split("\n"):
+        while len(line) > limit:
+            cut = line.rfind(" ", 0, limit)
+            if cut <= 0:
+                cut = limit
+            if cur:
+                parts.append(cur)
+                cur = ""
+            parts.append(line[:cut])
+            line = line[cut:].lstrip()
+        if len(cur) + len(line) + 1 > limit:
+            if cur:
+                parts.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    if cur:
+        parts.append(cur)
+    return parts
+
+
+def _build_entries(texts: dict[int, str], ayah_nums: list[int]) -> list[tuple[int, str, str]]:
+    """يرجع (رقم الآية، النوع، النص). النوع: text / empty / dup"""
+    entries = []
+    prev = None
+    for n in ayah_nums:
+        t = (texts.get(n) or "").strip()
+        if not t:
+            entries.append((n, "empty", ""))
+        elif t == prev:
+            entries.append((n, "dup", ""))
+        else:
+            entries.append((n, "text", t))
+            prev = t
+    return entries
+
+
+def build_tafsir_chunks(
+    surah: dict, mufassir: dict, label: str, entries: list[tuple[int, str, str]]
+) -> list[str]:
+    head = (
+        f"<b>{mufassir['name']}</b> {EMOJI_TAFSIR}\n"
+        f"سورة <b>{surah['name']}</b> — {label}"
+    )
+    pieces: list[str] = [head]
+    for n, kind, text in entries:
+        title = f"<b>﴿ الآية {n} ﴾</b>"
+        if kind == "empty":
+            pieces.append(
+                f"{title}\n<i>لا يوجد تفسير مستقل لهذه الآية في هذا الكتاب "
+                "(قد تكون مشمولة ضمن تفسير آية مجاورة).</i>"
+            )
+        elif kind == "dup":
+            pieces.append(f"{title}\n<i>تفسيرها مذكور ضمن الآية السابقة.</i>")
+        else:
+            parts = _split_long(html_lib.escape(text), TAFSIR_PIECE_LIMIT)
+            pieces.append(f"{title}\n{parts[0]}")
+            pieces.extend(parts[1:])
+
+    chunks: list[str] = []
+    cur = ""
+    for piece in pieces:
+        if cur and len(cur) + len(piece) + 2 > TAFSIR_MESSAGE_LIMIT:
+            chunks.append(cur)
+            cur = piece
+        else:
+            cur = f"{cur}\n\n{piece}" if cur else piece
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def build_tafsir_plain(
+    surah: dict, mufassir: dict, label: str, entries: list[tuple[int, str, str]]
+) -> str:
+    lines = [f"{mufassir['name']} - سورة {surah['name']} - {label}", ""]
+    for n, kind, text in entries:
+        lines.append(f"﴿ الآية {n} ﴾")
+        if kind == "empty":
+            lines.append("لا يوجد تفسير مستقل لهذه الآية في هذا الكتاب.")
+        elif kind == "dup":
+            lines.append("تفسيرها مذكور ضمن الآية السابقة.")
+        else:
+            lines.append(text)
+        lines.append("")
+    return "\n".join(lines)
+
+
+async def send_tafsir(
+    message: Message, surah: dict, ayah_nums: list[int], mufassir: dict, label: str
+):
+    if not ayah_nums:
+        await message.answer("⚠️ تعذر تحديد الآيات المطلوبة، حاول مرة أخرى.")
+        return
+
+    waiting = await message.answer(
+        f"<b>جارِ</b> تجهيز <b>التفسير</b> {EMOJI_WAITING_HTML}",
+        parse_mode=ParseMode.HTML,
+    )
+
+    async def _drop_waiting():
+        try:
+            await waiting.delete()
+        except Exception:
+            pass
+
+    texts = await fetch_tafsir_surah(mufassir["slug"], surah["number"])
+    if not texts:
+        await _drop_waiting()
+        await message.answer("⚠️ تعذر جلب التفسير حالياً، حاول بعد قليل.")
+        return
+
+    entries = _build_entries(texts, ayah_nums)
+    chunks = build_tafsir_chunks(surah, mufassir, label, entries)
+
+    try:
+        if len(chunks) <= MAX_TAFSIR_MESSAGES:
+            for chunk in chunks:
+                await message.answer(chunk, parse_mode=ParseMode.HTML)
+                await asyncio.sleep(0.3)
+        else:
+            plain = build_tafsir_plain(surah, mufassir, label, entries)
+            doc = BufferedInputFile(
+                plain.encode("utf-8"),
+                filename=f"{mufassir['name']}_{surah['name']}_{label}.txt".replace(" ", "_"),
+            )
+            await message.answer_document(
+                document=doc,
+                caption=(
+                    f"<b>{mufassir['name']}</b> {EMOJI_TAFSIR}\n"
+                    "التفسير طويل فأرسلته كملف نصي."
+                ),
+                parse_mode=ParseMode.HTML,
+            )
+    except TelegramAPIError:
+        logger.exception("فشل إرسال التفسير")
+        await message.answer("⚠️ حدث خطأ أثناء إرسال التفسير.")
+    finally:
+        await _drop_waiting()
+
+
+# ---------------------------------------------------------------------------
+# لوحات المفاتيح
+# ---------------------------------------------------------------------------
+
+
+def build_mufassir_menu(user_id: Optional[int]) -> InlineKeyboardMarkup:
+    selected_key = USER_MUFASSIR.get(user_id, DEFAULT_MUFASSIR_KEY)
+    rows = []
+    for m in MUFASSIRS:
+        is_selected = m["key"] == selected_key
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=m["name"],
+                    callback_data=f"select_mufassir:{m['key']}",
+                    style="success" if is_selected else "primary",
+                    icon_custom_emoji_id=(
+                        ID_RECITER_SELECTED_EMOJI if is_selected else ID_RECITER_EMOJI
+                    ),
+                )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="القائمة الرئيسية",
+                callback_data="back_to_home",
+                icon_custom_emoji_id=ID_MAIN_HOME,
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_tafsir_surah_list_menu(page: int = 0) -> InlineKeyboardMarkup:
+    start_idx = page * SURAHS_PER_PAGE
+    end_idx = start_idx + SURAHS_PER_PAGE
+    current_surahs = SURAHS[start_idx:end_idx]
+
+    rows = []
+    row = []
+    for idx, surah in enumerate(current_surahs):
+        row.append(
+            InlineKeyboardButton(
+                text=f"سورة {surah['name']}",
+                callback_data=f"tsurah:{surah['key']}",
+                style="primary" if idx % 2 == 0 else "success",
+                icon_custom_emoji_id=ID_SURAH_ICON,
+            )
+        )
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(
+            InlineKeyboardButton(
+                text=INVISIBLE_SPACE,
+                callback_data=f"tsurah_page:{page - 1}",
+                style="danger",
+                icon_custom_emoji_id=ID_NAV_PREV,
+                style_type="large",
+            )
+        )
+    if end_idx < len(SURAHS):
+        nav_row.append(
+            InlineKeyboardButton(
+                text=INVISIBLE_SPACE,
+                callback_data=f"tsurah_page:{page + 1}",
+                style="danger",
+                icon_custom_emoji_id=ID_NAV_NEXT,
+                style_type="large",
+            )
+        )
+    if nav_row:
+        rows.append(nav_row)
+
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="تغيير المفسر",
+                callback_data="open_mufassir_section",
+                icon_custom_emoji_id=ID_RECITER_EMOJI,
+            ),
+            InlineKeyboardButton(
+                text="القائمة الرئيسية",
+                callback_data="back_to_home",
+                icon_custom_emoji_id=ID_MAIN_HOME,
+            ),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_tafsir_mode_menu(surah_key: str) -> InlineKeyboardMarkup:
+    def btn(text: str, data: str) -> list:
+        return [
+            InlineKeyboardButton(
+                text=text,
+                callback_data=data,
+                style="success",
+                icon_custom_emoji_id=ID_MODE_BTN,
+            )
+        ]
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            btn("تفسير صفحة واحدة", f"tgrid:{surah_key}:0"),
+            btn("تفسير أكثر من صفحة", f"trange:{surah_key}"),
+            btn("تفسير آية واحدة", f"tayah:{surah_key}"),
+            btn("تفسير أكثر من آية", f"tayahs:{surah_key}"),
+            [
+                InlineKeyboardButton(
+                    text="رجوع",
+                    callback_data="tsurah_page:0",
+                    style="danger",
+                    icon_custom_emoji_id=ID_MAIN_HOME,
+                )
+            ],
+        ]
+    )
+
+
+def build_tafsir_page_grid(surah_key: str, offset: int) -> InlineKeyboardMarkup:
+    surah = SURAHS_DICT[surah_key]
+    all_pages = list(range(surah["start_page"], surah["end_page"] + 1))
+    screen_pages = all_pages[offset : offset + PAGES_PER_GRID_SCREEN]
+
+    rows = []
+    row = []
+    for page in screen_pages:
+        row.append(
+            InlineKeyboardButton(
+                text=str(page),
+                callback_data=f"tpg:{surah_key}:{page}",
+                style="primary",
+            )
+        )
+        if len(row) == GRID_COLUMNS:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    nav_row = []
+    if offset > 0:
+        nav_row.append(
+            InlineKeyboardButton(
+                text=INVISIBLE_SPACE,
+                callback_data=f"tgrid:{surah_key}:{max(0, offset - PAGES_PER_GRID_SCREEN)}",
+                style="danger",
+                icon_custom_emoji_id=ID_NAV_PREV,
+                style_type="large",
+            )
+        )
+    if offset + PAGES_PER_GRID_SCREEN < len(all_pages):
+        nav_row.append(
+            InlineKeyboardButton(
+                text=INVISIBLE_SPACE,
+                callback_data=f"tgrid:{surah_key}:{offset + PAGES_PER_GRID_SCREEN}",
+                style="danger",
+                icon_custom_emoji_id=ID_NAV_NEXT,
+                style_type="large",
+            )
+        )
+    if nav_row:
+        rows.append(nav_row)
+
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="رجوع",
+                callback_data=f"tsurah:{surah_key}",
+                style="danger",
+                icon_custom_emoji_id=ID_MAIN_HOME,
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ---------------------------------------------------------------------------
+# المعالجات
+# ---------------------------------------------------------------------------
+
+
+@router.callback_query(F.data == "open_tafsir_section")
+async def on_open_tafsir_section(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.answer()
+    mufassir = get_user_mufassir(callback.from_user.id)
+    text = f"{TAFSIR_HEADER_TEXT}\nالمفسر الحالي: <b>{mufassir['name']}</b>"
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=build_tafsir_surah_list_menu(0),
+            parse_mode=ParseMode.HTML,
+        )
+    except TelegramAPIError:
+        pass
+
+
+@router.callback_query(F.data == "open_mufassir_section")
+async def on_open_mufassir_section(callback: CallbackQuery):
+    await callback.answer()
+    try:
+        await callback.message.edit_text(
+            MUFASSIR_HEADER_TEXT,
+            reply_markup=build_mufassir_menu(callback.from_user.id),
+            parse_mode=ParseMode.HTML,
+        )
+    except TelegramAPIError:
+        pass
+
+
+@router.callback_query(F.data.startswith("select_mufassir:"))
+async def on_select_mufassir(callback: CallbackQuery):
+    key = callback.data.split(":", 1)[1]
+    mufassir = MUFASSIRS_DICT.get(key)
+    if not mufassir:
+        await callback.answer()
+        return
+    USER_MUFASSIR[callback.from_user.id] = key
+    await callback.answer(f"تم أختيار: {mufassir['name']}")
+    try:
+        await callback.message.edit_text(
+            MUFASSIR_HEADER_TEXT,
+            reply_markup=build_mufassir_menu(callback.from_user.id),
+            parse_mode=ParseMode.HTML,
+        )
+    except TelegramAPIError:
+        pass
+
+
+@router.callback_query(F.data.startswith("tsurah_page:"))
+async def on_tafsir_surah_page(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    page = int(callback.data.split(":")[1])
+    await callback.answer()
+    mufassir = get_user_mufassir(callback.from_user.id)
+    text = f"{TAFSIR_HEADER_TEXT}\nالمفسر الحالي: <b>{mufassir['name']}</b>"
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=build_tafsir_surah_list_menu(page),
+            parse_mode=ParseMode.HTML,
+        )
+    except TelegramAPIError:
+        pass
+
+
+@router.callback_query(F.data.startswith("tsurah:"))
+async def on_tafsir_surah_selected(callback: CallbackQuery, state: FSMContext):
+    key = callback.data.split(":", 1)[1]
+    surah = SURAHS_DICT.get(key)
+    if not surah:
+        await callback.answer()
+        return
+    await callback.answer()
+    await state.clear()
+    mufassir = get_user_mufassir(callback.from_user.id)
+    text = (
+        f"أخترت سورة <b>{surah['name']}</b> {EMOJI_SURAH_CHOSEN}\n"
+        f"المفسر: <b>{mufassir['name']}</b>\n"
+        f"أختر طريقة عرض <b>التفسير</b> {EMOJI_SELECT_MODE}"
+    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=build_tafsir_mode_menu(key),
+            parse_mode=ParseMode.HTML,
+        )
+    except TelegramAPIError:
+        pass
+
+
+@router.callback_query(F.data.startswith("tgrid:"))
+async def on_tafsir_grid(callback: CallbackQuery):
+    _, surah_key, offset_str = callback.data.split(":")
+    surah = SURAHS_DICT.get(surah_key)
+    if not surah:
+        await callback.answer()
+        return
+    await callback.answer()
+    text = f"<b>{surah['name']}</b> - أختر صفحة لتفسيرها {EMOJI_GRID_TITLE}"
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=build_tafsir_page_grid(surah_key, int(offset_str)),
+            parse_mode=ParseMode.HTML,
+        )
+    except TelegramAPIError:
+        pass
+
+
+@router.callback_query(F.data.startswith("tpg:"))
+async def on_tafsir_single_page(callback: CallbackQuery):
+    _, surah_key, page_str = callback.data.split(":")
+    surah = SURAHS_DICT.get(surah_key)
+    if not surah:
+        await callback.answer()
+        return
+    await callback.answer()
+    page = int(page_str)
+    mufassir = get_user_mufassir(callback.from_user.id)
+    ayahs = await pages_to_surah_ayahs(surah, [page])
+    await send_tafsir(callback.message, surah, ayahs, mufassir, f"صفحة {page}")
+
+
+# ----- أكثر من صفحة -----
+
+
+@router.callback_query(F.data.startswith("trange:"))
+async def on_tafsir_range_requested(callback: CallbackQuery, state: FSMContext):
+    surah_key = callback.data.split(":", 1)[1]
+    surah = SURAHS_DICT.get(surah_key)
+    if not surah:
+        await callback.answer()
+        return
+    await callback.answer()
+    await state.update_data(surah_key=surah_key)
+    await state.set_state(TafsirStates.waiting_for_page_range)
+    await callback.message.answer(
+        f"<b>أختر</b> عدد من الصفحات من ( <b>{surah['start_page']}</b> - "
+        f"<b>{surah['end_page']}</b> ) {EMOJI_RANGE_TITLE}\n\n"
+        f"{EMOJI_ALERT} <b>تنبيه</b> الحد المسموح <b><u>{MAX_TAFSIR_PAGES}</u></b> صفحات وأقل.\n"
+        f"{EMOJI_ALERT} <b>أرسل</b> <u>النطاق المطلوب</u> هكذا (مثال: <code>5-8</code>):",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@router.message(TafsirStates.waiting_for_page_range, F.text)
+async def on_tafsir_page_range(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    match = re.match(r"^(\d{1,3})\s*-\s*(\d{1,3})$", text)
+    if not match:
+        await message.answer(
+            "⚠️ صيغة غير صحيحة. أرسل النطاق هكذا: <code>5-8</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    start_page, end_page = int(match.group(1)), int(match.group(2))
+    data = await state.get_data()
+    surah = SURAHS_DICT.get(data.get("surah_key"))
+
+    if (
+        not surah
+        or start_page > end_page
+        or start_page < surah["start_page"]
+        or end_page > surah["end_page"]
+    ):
+        await message.answer("⚠️ النطاق مدخل بشكل غير صحيح أو خارج صفحات السورة.")
+        return
+    if (end_page - start_page + 1) > MAX_TAFSIR_PAGES:
+        await message.answer(
+            f"{EMOJI_ALERT} عذراً، لا يمكن اختيار أكثر من {MAX_TAFSIR_PAGES} صفحات في المرة الواحدة.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    await state.clear()
+    mufassir = get_user_mufassir(message.from_user.id)
+    pages = list(range(start_page, end_page + 1))
+    ayahs = await pages_to_surah_ayahs(surah, pages)
+    await send_tafsir(message, surah, ayahs, mufassir, f"الصفحات {start_page}-{end_page}")
+
+
+# ----- آية واحدة -----
+
+
+@router.callback_query(F.data.startswith("tayah:"))
+async def on_tafsir_single_ayah_requested(callback: CallbackQuery, state: FSMContext):
+    surah_key = callback.data.split(":", 1)[1]
+    surah = SURAHS_DICT.get(surah_key)
+    if not surah:
+        await callback.answer()
+        return
+    await callback.answer()
+    await state.update_data(surah_key=surah_key)
+    await state.set_state(TafsirStates.waiting_for_single_ayah)
+    count = AYAH_COUNTS[surah["number"] - 1]
+    await callback.message.answer(
+        f"<b>أرسل</b> رقم الآية من ( <b>1</b> - <b>{count}</b> ) {EMOJI_RANGE_TITLE}\n"
+        f"{EMOJI_ALERT} مثال: <code>5</code>",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@router.message(TafsirStates.waiting_for_single_ayah, F.text)
+async def on_tafsir_single_ayah(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    data = await state.get_data()
+    surah = SURAHS_DICT.get(data.get("surah_key"))
+    if not surah:
+        await state.clear()
+        return
+    count = AYAH_COUNTS[surah["number"] - 1]
+
+    if not re.match(r"^\d{1,3}$", text) or not (1 <= int(text) <= count):
+        await message.answer(
+            f"⚠️ أرسل رقماً صحيحاً بين 1 و {count}، مثال: <code>5</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    await state.clear()
+    ayah = int(text)
+    mufassir = get_user_mufassir(message.from_user.id)
+    await send_tafsir(message, surah, [ayah], mufassir, f"الآية {ayah}")
+
+
+# ----- أكثر من آية -----
+
+
+@router.callback_query(F.data.startswith("tayahs:"))
+async def on_tafsir_ayah_range_requested(callback: CallbackQuery, state: FSMContext):
+    surah_key = callback.data.split(":", 1)[1]
+    surah = SURAHS_DICT.get(surah_key)
+    if not surah:
+        await callback.answer()
+        return
+    await callback.answer()
+    await state.update_data(surah_key=surah_key)
+    await state.set_state(TafsirStates.waiting_for_ayah_range)
+    count = AYAH_COUNTS[surah["number"] - 1]
+    await callback.message.answer(
+        f"<b>أرسل</b> نطاق الآيات من ( <b>1</b> - <b>{count}</b> ) {EMOJI_RANGE_TITLE}\n\n"
+        f"{EMOJI_ALERT} <b>تنبيه</b> الحد المسموح <b><u>{MAX_TAFSIR_AYAHS}</u></b> آية وأقل.\n"
+        f"{EMOJI_ALERT} مثال: <code>5-12</code>",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@router.message(TafsirStates.waiting_for_ayah_range, F.text)
+async def on_tafsir_ayah_range(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    match = re.match(r"^(\d{1,3})\s*-\s*(\d{1,3})$", text)
+    if not match:
+        await message.answer(
+            "⚠️ صيغة غير صحيحة. أرسل النطاق هكذا: <code>5-12</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    start_ayah, end_ayah = int(match.group(1)), int(match.group(2))
+    data = await state.get_data()
+    surah = SURAHS_DICT.get(data.get("surah_key"))
+    if not surah:
+        await state.clear()
+        return
+    count = AYAH_COUNTS[surah["number"] - 1]
+
+    if start_ayah > end_ayah or start_ayah < 1 or end_ayah > count:
+        await message.answer(f"⚠️ النطاق خارج آيات السورة (1 - {count}).")
+        return
+    if (end_ayah - start_ayah + 1) > MAX_TAFSIR_AYAHS:
+        await message.answer(
+            f"{EMOJI_ALERT} عذراً، لا يمكن اختيار أكثر من {MAX_TAFSIR_AYAHS} آية في المرة الواحدة.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    await state.clear()
+    mufassir = get_user_mufassir(message.from_user.id)
+    ayahs = list(range(start_ayah, end_ayah + 1))
+    await send_tafsir(message, surah, ayahs, mufassir, f"الآيات {start_ayah}-{end_ayah}")
 
 
 async def main():
