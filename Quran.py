@@ -14,7 +14,7 @@ from aiohttp import web
 from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -1422,7 +1422,6 @@ AYAH_COUNTS = [
 
 MAX_TAFSIR_PAGES = 5          # أقصى عدد صفحات في الطلب الواحد
 MAX_TAFSIR_AYAHS = 30         # أقصى عدد آيات في الطلب الواحد
-MAX_TAFSIR_MESSAGES = 6       # إذا زاد التفسير عن هذا العدد من الرسائل يُرسل كملف txt
 TAFSIR_MESSAGE_LIMIT = 3800   # حد الرسالة الواحدة (تيليجرام 4096)
 TAFSIR_PIECE_LIMIT = 3000     # حد القطعة الواحدة قبل التجميع
 TAFSIR_DOWNLOAD_TIMEOUT = 60
@@ -1575,6 +1574,30 @@ def _build_entries(texts: dict[int, str], ayah_nums: list[int]) -> list[tuple[in
 # تنسيق نص التفسير (فقرات + خط عريض للكلمات المهمة + إيموجيات)
 # ---------------------------------------------------------------------------
 
+USER_TAFSIR_MODE: dict[int, str] = {}   # "short" (افتراضي) أو "full"
+SHORT_TAFSIR_LIMIT = 350                # عدد أحرف التفسير المختصر لكل آية
+
+
+def get_user_tafsir_mode(user_id: Optional[int]) -> str:
+    return USER_TAFSIR_MODE.get(user_id, "short")
+
+
+def shorten_tafsir(text: str, limit: int = SHORT_TAFSIR_LIMIT) -> str:
+    """يأخذ أول جمل التفسير حتى حدود limit ثم يقطع بشكل مرتب."""
+    flat = re.sub(r"\s+", " ", text).strip()
+    if len(flat) <= limit:
+        return flat
+    out = ""
+    for sent in re.split(r"(?<=[.!؟?])\s+", flat):
+        if out and len(out) + len(sent) > limit:
+            break
+        out = f"{out} {sent}" if out else sent
+    if len(out) > limit * 1.6:
+        out = out[:limit].rsplit(" ", 1)[0]
+    out = out.rstrip(" ،:؛")
+    return out + " …" if len(out) < len(flat) else out
+
+
 TAFSIR_PARAGRAPH_SIZE = 320  # طول الفقرة التقريبي قبل كسرها لسهولة القراءة
 
 # كلمة مهمة -> إيموجي الفقرة التي تبدأ بها
@@ -1697,24 +1720,13 @@ def build_tafsir_chunks(
     return chunks
 
 
-def build_tafsir_plain(
-    surah: dict, mufassir: dict, label: str, entries: list[tuple[int, str, str]]
-) -> str:
-    lines = [f"{mufassir['name']} - سورة {surah['name']} - {label}", ""]
-    for n, kind, text in entries:
-        lines.append(f"✨ الآية {n}")
-        if kind == "empty":
-            lines.append("لا يوجد تفسير مستقل لهذه الآية في هذا الكتاب.")
-        elif kind == "dup":
-            lines.append("تفسيرها مذكور ضمن الآية السابقة.")
-        else:
-            lines.append("\n\n".join(f"🔹 {p}" for p in tafsir_paragraphs(text)))
-        lines.append("")
-    return "\n".join(lines)
-
-
 async def send_tafsir(
-    message: Message, surah: dict, ayah_nums: list[int], mufassir: dict, label: str
+    message: Message,
+    surah: dict,
+    ayah_nums: list[int],
+    mufassir: dict,
+    label: str,
+    user_id: Optional[int] = None,
 ):
     if not ayah_nums:
         await message.answer("⚠️ تعذر تحديد الآيات المطلوبة، حاول مرة أخرى.")
@@ -1738,27 +1750,24 @@ async def send_tafsir(
         return
 
     entries = _build_entries(texts, ayah_nums)
+    short = get_user_tafsir_mode(user_id) == "short"
+    if short:
+        entries = [
+            (n, k, shorten_tafsir(t) if k == "text" else t) for n, k, t in entries
+        ]
+        label = f"{label} ✂️ مختصر"
     chunks = build_tafsir_chunks(surah, mufassir, label, entries)
 
     try:
-        if len(chunks) <= MAX_TAFSIR_MESSAGES:
-            for chunk in chunks:
-                await message.answer(chunk, parse_mode=ParseMode.HTML)
-                await asyncio.sleep(0.3)
-        else:
-            plain = build_tafsir_plain(surah, mufassir, label, entries)
-            doc = BufferedInputFile(
-                plain.encode("utf-8"),
-                filename=f"{mufassir['name']}_{surah['name']}_{label}.txt".replace(" ", "_"),
-            )
-            await message.answer_document(
-                document=doc,
-                caption=(
-                    f"<b>{mufassir['name']}</b> {EMOJI_TAFSIR}\n"
-                    "التفسير طويل فأرسلته كملف نصي."
-                ),
-                parse_mode=ParseMode.HTML,
-            )
+        # دائماً رسائل نصية (بدون ملفات) مهما طال التفسير
+        for chunk in chunks:
+            for attempt in range(3):
+                try:
+                    await message.answer(chunk, parse_mode=ParseMode.HTML)
+                    break
+                except TelegramRetryAfter as e:
+                    await asyncio.sleep(e.retry_after + 1)
+            await asyncio.sleep(0.5)
     except TelegramAPIError:
         logger.exception("فشل إرسال التفسير")
         await message.answer("⚠️ حدث خطأ أثناء إرسال التفسير.")
@@ -1788,6 +1797,16 @@ def build_mufassir_menu(user_id: Optional[int]) -> InlineKeyboardMarkup:
                 )
             ]
         )
+    is_short = get_user_tafsir_mode(user_id) == "short"
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="النمط: مختصر ✂️ (اضغط للتبديل)" if is_short else "النمط: كامل 📚 (اضغط للتبديل)",
+                callback_data="toggle_tafsir_mode",
+                style="success" if is_short else "primary",
+            )
+        ]
+    )
     rows.append(
         [
             InlineKeyboardButton(
@@ -1960,7 +1979,8 @@ async def on_open_tafsir_section(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     mufassir = get_user_mufassir(callback.from_user.id)
-    text = f"{TAFSIR_HEADER_TEXT}\nالمفسر الحالي: <b>{mufassir['name']}</b>"
+    mode_name = "مختصر ✂️" if get_user_tafsir_mode(callback.from_user.id) == "short" else "كامل 📚"
+    text = f"{TAFSIR_HEADER_TEXT}\nالمفسر الحالي: <b>{mufassir['name']}</b> • النمط: <b>{mode_name}</b>"
     try:
         await callback.message.edit_text(
             text,
@@ -1978,6 +1998,22 @@ async def on_open_mufassir_section(callback: CallbackQuery):
         await callback.message.edit_text(
             MUFASSIR_HEADER_TEXT,
             reply_markup=build_mufassir_menu(callback.from_user.id),
+            parse_mode=ParseMode.HTML,
+        )
+    except TelegramAPIError:
+        pass
+
+
+@router.callback_query(F.data == "toggle_tafsir_mode")
+async def on_toggle_tafsir_mode(callback: CallbackQuery):
+    uid = callback.from_user.id
+    new_mode = "full" if get_user_tafsir_mode(uid) == "short" else "short"
+    USER_TAFSIR_MODE[uid] = new_mode
+    await callback.answer("تم التبديل إلى: " + ("مختصر ✂️" if new_mode == "short" else "كامل 📚"))
+    try:
+        await callback.message.edit_text(
+            MUFASSIR_HEADER_TEXT,
+            reply_markup=build_mufassir_menu(uid),
             parse_mode=ParseMode.HTML,
         )
     except TelegramAPIError:
@@ -2009,7 +2045,8 @@ async def on_tafsir_surah_page(callback: CallbackQuery, state: FSMContext):
     page = int(callback.data.split(":")[1])
     await callback.answer()
     mufassir = get_user_mufassir(callback.from_user.id)
-    text = f"{TAFSIR_HEADER_TEXT}\nالمفسر الحالي: <b>{mufassir['name']}</b>"
+    mode_name = "مختصر ✂️" if get_user_tafsir_mode(callback.from_user.id) == "short" else "كامل 📚"
+    text = f"{TAFSIR_HEADER_TEXT}\nالمفسر الحالي: <b>{mufassir['name']}</b> • النمط: <b>{mode_name}</b>"
     try:
         await callback.message.edit_text(
             text,
@@ -2075,7 +2112,10 @@ async def on_tafsir_single_page(callback: CallbackQuery):
     page = int(page_str)
     mufassir = get_user_mufassir(callback.from_user.id)
     ayahs = await pages_to_surah_ayahs(surah, [page])
-    await send_tafsir(callback.message, surah, ayahs, mufassir, f"صفحة {page}")
+    await send_tafsir(
+        callback.message, surah, ayahs, mufassir, f"صفحة {page}",
+        user_id=callback.from_user.id,
+    )
 
 
 # ----- أكثر من صفحة -----
@@ -2134,7 +2174,10 @@ async def on_tafsir_page_range(message: Message, state: FSMContext):
     mufassir = get_user_mufassir(message.from_user.id)
     pages = list(range(start_page, end_page + 1))
     ayahs = await pages_to_surah_ayahs(surah, pages)
-    await send_tafsir(message, surah, ayahs, mufassir, f"الصفحات {start_page}-{end_page}")
+    await send_tafsir(
+        message, surah, ayahs, mufassir, f"الصفحات {start_page}-{end_page}",
+        user_id=message.from_user.id,
+    )
 
 
 # ----- آية واحدة -----
@@ -2178,7 +2221,10 @@ async def on_tafsir_single_ayah(message: Message, state: FSMContext):
     await state.clear()
     ayah = int(text)
     mufassir = get_user_mufassir(message.from_user.id)
-    await send_tafsir(message, surah, [ayah], mufassir, f"الآية {ayah}")
+    await send_tafsir(
+        message, surah, [ayah], mufassir, f"الآية {ayah}",
+        user_id=message.from_user.id,
+    )
 
 
 # ----- أكثر من آية -----
@@ -2235,7 +2281,10 @@ async def on_tafsir_ayah_range(message: Message, state: FSMContext):
     await state.clear()
     mufassir = get_user_mufassir(message.from_user.id)
     ayahs = list(range(start_ayah, end_ayah + 1))
-    await send_tafsir(message, surah, ayahs, mufassir, f"الآيات {start_ayah}-{end_ayah}")
+    await send_tafsir(
+        message, surah, ayahs, mufassir, f"الآيات {start_ayah}-{end_ayah}",
+        user_id=message.from_user.id,
+    )
 
 
 async def main():
@@ -2260,4 +2309,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
