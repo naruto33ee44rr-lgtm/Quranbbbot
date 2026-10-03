@@ -51,7 +51,7 @@ async def start_dummy_server():
 # ============================================================================
 
 # التوكن: ضعه في متغير بيئة اسمه BOT_TOKEN على Render (لا تكتبه داخل الملف)
-BOT_TOKEN = "8985243390:AAFwMzMbfit3_0OKb77KvGPOj5ZSBQmzRpU"
+BOT_TOKEN = "8985243390:AAGsq3yhWDw11IIMuqXyd_Ys-6AZkVUGHdg"
 
 DEVELOPER_USERNAME = "mh5_c"
 
