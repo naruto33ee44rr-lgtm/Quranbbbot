@@ -6,7 +6,8 @@ import logging
 import os
 import random
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional
 
@@ -26,7 +27,10 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputMediaPhoto,
+    KeyboardButton,
     Message,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
     TelegramObject,
 )
 
@@ -52,7 +56,6 @@ async def start_dummy_server():
 
 # التوكن: ضعه في متغير بيئة اسمه BOT_TOKEN على Render (لا تكتبه داخل الملف)
 BOT_TOKEN = "8985243390:AAGsq3yhWDw11IIMuqXyd_Ys-6AZkVUGHdg"
-
 DEVELOPER_USERNAME = "mh5_c"
 
 # آيدي المالك (الرقمي) المسموح له بفتح لوحة تحكم الأمن.
@@ -673,7 +676,15 @@ def build_home_menu() -> InlineKeyboardMarkup:
                     text="آية عشوائية",
                     callback_data="random_ayah",
                     style="danger",
-                    icon_custom_emoji_id=ID_SURAH_CHOSEN,
+                    icon_custom_emoji_id=ID_DICE_EMOJI,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="مواقيت الصلاة",
+                    callback_data="prayer_times",
+                    style="danger",
+                    icon_custom_emoji_id=ID_MAIN_SECTION,
                 )
             ],
             [
@@ -1415,7 +1426,7 @@ MUFASSIRS_DICT = {m["key"]: m for m in MUFASSIRS}
 DEFAULT_MUFASSIR_KEY = MUFASSIRS[0]["key"]
 USER_MUFASSIR: dict[int, str] = {}
 
-# المفسر الثابت للآية العشوائية (التفسير الميسر دائماً)
+# التفسير الثابت للآية العشوائية (التفسير الميسر دائماً)
 RANDOM_AYAH_MUFASSIR_KEY = "muyassar"
 
 # عدد آيات كل سورة (1 → 114)
@@ -1971,7 +1982,7 @@ def build_random_keyboard(muf_idx: int, surah_key: str, ayah_num: int) -> Inline
                     text="آية أخرى",
                     callback_data="random_ayah",
                     style="success",
-                    icon_custom_emoji_id=ID_SURAH_CHOSEN,
+                    icon_custom_emoji_id=ID_DICE_EMOJI,
                 ),
                 InlineKeyboardButton(
                     text="التفسير الكامل",
@@ -1986,9 +1997,8 @@ def build_random_keyboard(muf_idx: int, surah_key: str, ayah_num: int) -> Inline
 
 
 async def send_random_ayah(message: Message, user_id: Optional[int]):
-    # التفسير ثابت دائماً على التفسير الميسر، والقارئ حسب اختيار المستخدم
-    mufassir = MUFASSIRS_DICT[RANDOM_AYAH_MUFASSIR_KEY]
-    reciter = get_user_reciter(user_id)
+    mufassir = MUFASSIRS_DICT[RANDOM_AYAH_MUFASSIR_KEY]   # ثابت: التفسير الميسر
+    reciter = get_user_reciter(user_id)                   # حسب اختيار المستخدم
 
     surah_num, ayah_num, ayah_text = 1, 1, ""
     for _ in range(6):
@@ -2550,6 +2560,215 @@ async def on_tafsir_ayah_range(message: Message, state: FSMContext):
         message, surah, ayahs, mufassir, f"الآيات {start_ayah}-{end_ayah}",
         user_id=message.from_user.id,
     )
+
+
+# ============================================================================
+# قسم مواقيت الصلاة (الموقع تلقائي من التليجرام + الوقت المتبقي للأذان)
+# ============================================================================
+
+PRAYER_API_URL = "https://api.aladhan.com/v1/timings"
+PRAYER_METHOD = 3   # 3 = رابطة العالم الإسلامي (غيّره إذا تريد طريقة حساب ثانية)
+PRAYERS = [
+    ("Fajr", "الفجر", "🌙"),
+    ("Dhuhr", "الظهر", "☀️"),
+    ("Asr", "العصر", "🌤"),
+    ("Maghrib", "المغرب", "🌇"),
+    ("Isha", "العشاء", "🌌"),
+]
+USER_LOCATION: dict[int, tuple[float, float]] = {}
+_TIME_RE = re.compile(r"(\d{1,2}):(\d{2})")
+
+
+def build_location_request_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📍 إرسال موقعي", request_location=True)],
+            [KeyboardButton(text="إلغاء")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def build_prayer_result_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="تحديث الوقت المتبقي",
+                    callback_data="prayer_refresh",
+                    style="success",
+                ),
+                InlineKeyboardButton(
+                    text="تغيير الموقع",
+                    callback_data="prayer_times",
+                    style="primary",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="القائمة الرئيسية",
+                    callback_data="back_to_home",
+                    icon_custom_emoji_id=ID_MAIN_HOME,
+                )
+            ],
+        ]
+    )
+
+
+async def _fetch_prayer_json(lat: float, lon: float, date_str: Optional[str] = None) -> Optional[dict]:
+    assert http_session is not None
+    url = f"{PRAYER_API_URL}/{date_str}" if date_str else PRAYER_API_URL
+    params = {"latitude": lat, "longitude": lon, "method": PRAYER_METHOD}
+    for attempt in range(1, 4):
+        try:
+            timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SECONDS)
+            async with http_session.get(url, params=params, timeout=timeout) as resp:
+                if resp.status == 200:
+                    payload = await resp.json()
+                    if payload.get("code") == 200:
+                        return payload.get("data")
+        except Exception as e:
+            logger.warning("خطأ جلب مواقيت الصلاة: %s", e)
+        await asyncio.sleep(0.5 * attempt)
+    return None
+
+
+def _parse_clock(value: str, day: datetime) -> Optional[datetime]:
+    m = _TIME_RE.search(value or "")
+    if not m:
+        return None
+    return day.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+
+
+def _fmt_12h(dt: datetime) -> str:
+    hour = dt.hour % 12 or 12
+    suffix = "ص" if dt.hour < 12 else "م"
+    return f"{hour}:{dt.minute:02d} {suffix}"
+
+
+def _fmt_remaining(delta: timedelta) -> str:
+    total_min = max(0, int(delta.total_seconds() // 60))
+    h, m = divmod(total_min, 60)
+    if h and m:
+        return f"{h} ساعة و {m} دقيقة"
+    if h:
+        return f"{h} ساعة"
+    return f"{m} دقيقة" if m else "أقل من دقيقة"
+
+
+async def build_prayer_message(lat: float, lon: float) -> Optional[str]:
+    data = await _fetch_prayer_json(lat, lon)
+    if not data:
+        return None
+    tz_name = (data.get("meta") or {}).get("timezone") or "UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("UTC")
+
+    now = datetime.now(tz)
+    day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    timings = data.get("timings") or {}
+
+    times: list[tuple[str, str, datetime]] = []
+    for key, name, icon in PRAYERS:
+        dt = _parse_clock(timings.get(key, ""), day)
+        if dt:
+            times.append((name, icon, dt))
+    if len(times) != len(PRAYERS):
+        return None
+
+    upcoming = next((t for t in times if t[2] > now), None)
+    if upcoming is None:
+        # بعد العشاء: الأذان القادم هو فجر الغد
+        tomorrow = day + timedelta(days=1)
+        t_data = await _fetch_prayer_json(lat, lon, tomorrow.strftime("%d-%m-%Y"))
+        fajr_dt = _parse_clock(((t_data or {}).get("timings") or {}).get("Fajr", ""), tomorrow)
+        if not fajr_dt:
+            return None
+        upcoming = (PRAYERS[0][1], PRAYERS[0][2], fajr_dt)
+
+    hijri = (data.get("date") or {}).get("hijri") or {}
+    hijri_line = ""
+    if hijri.get("day"):
+        month_ar = (hijri.get("month") or {}).get("ar", "")
+        hijri_line = f"\n📅 {hijri['day']} {month_ar} {hijri.get('year', '')}هـ"
+
+    lines = [f"🕌 <b>مواقيت الصلاة</b>{hijri_line}", ""]
+    for name, icon, dt in times:
+        mark = " ◀️" if dt == upcoming[2] else ""
+        lines.append(f"{icon} <b>{name}</b> : <code>{_fmt_12h(dt)}</code>{mark}")
+
+    lines += [
+        "",
+        f"⏳ الأذان القادم: <b>{upcoming[0]}</b>",
+        f"المتبقي: <b>{_fmt_remaining(upcoming[2] - now)}</b>",
+        "",
+        f"<i>التوقيت المحلي: {html_lib.escape(tz_name)}</i>",
+    ]
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data == "prayer_times")
+async def on_prayer_times(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "اضغط على زر <b>📍 إرسال موقعي</b> بالأسفل ليرسل التليجرام موقعك تلقائياً.",
+        reply_markup=build_location_request_keyboard(),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@router.message(F.text == "إلغاء")
+async def on_prayer_cancel(message: Message):
+    await message.answer("تم الإلغاء.", reply_markup=ReplyKeyboardRemove())
+
+
+async def _send_prayer_times(message: Message, lat: float, lon: float):
+    waiting = await message.answer(
+        f"<b>جارِ</b> جلب <b>مواقيت الصلاة</b> {EMOJI_WAITING_HTML}",
+        parse_mode=ParseMode.HTML,
+    )
+    try:
+        text = await build_prayer_message(lat, lon)
+        if not text:
+            await message.answer("⚠️ تعذر جلب مواقيت الصلاة حالياً، حاول بعد قليل.")
+            return
+        await message.answer(
+            text, reply_markup=build_prayer_result_keyboard(), parse_mode=ParseMode.HTML
+        )
+    finally:
+        try:
+            await waiting.delete()
+        except Exception:
+            pass
+
+
+@router.message(F.location)
+async def on_location_received(message: Message):
+    loc = message.location
+    USER_LOCATION[message.from_user.id] = (loc.latitude, loc.longitude)
+    await message.answer("تم استلام الموقع ✅", reply_markup=ReplyKeyboardRemove())
+    await _send_prayer_times(message, loc.latitude, loc.longitude)
+
+
+@router.callback_query(F.data == "prayer_refresh")
+async def on_prayer_refresh(callback: CallbackQuery):
+    coords = USER_LOCATION.get(callback.from_user.id)
+    if not coords:
+        await callback.answer("أرسل موقعك أولاً.", show_alert=True)
+        return
+    await callback.answer()
+    text = await build_prayer_message(*coords)
+    if not text:
+        return
+    try:
+        await callback.message.edit_text(
+            text, reply_markup=build_prayer_result_keyboard(), parse_mode=ParseMode.HTML
+        )
+    except TelegramAPIError:
+        pass  # لا تغيير في النص (نفس الدقيقة)
 
 
 async def main():
